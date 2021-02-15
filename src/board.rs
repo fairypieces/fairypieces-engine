@@ -7,25 +7,24 @@ use generic_array::typenum::{self, Unsigned};
 use lazy_static::lazy_static;
 use crate::math::*;
 
-pub struct Board<G>
-where
-    G: BoardGeometry,
-{
+#[derive(Debug)]
+pub struct Board<G: BoardGeometry> {
     tiles: BoardTiles<G>,
 }
 
-pub struct BoardTiles<G>
-where
-    G: BoardGeometry,
-{
+impl<G: BoardGeometry> Board<G> {
+    pub fn tiles(&self) -> &BoardTiles<G> {
+        &self.tiles
+    }
+}
+
+#[derive(Debug)]
+pub struct BoardTiles<G: BoardGeometry> {
     invert_set: bool,
     tile_set: HashSet<<G as BoardGeometryExt>::Tile>,
 }
 
-impl<G> BoardTiles<G>
-where
-    G: BoardGeometry,
-{
+impl<G: BoardGeometry> BoardTiles<G> {
     pub fn set(&mut self, tile: <G as BoardGeometryExt>::Tile, present: bool) {
         if self.invert_set ^ present {
             self.tile_set.insert(tile);
@@ -34,8 +33,8 @@ where
         }
     }
 
-    pub fn contains(&self, tile: <G as BoardGeometryExt>::Tile) -> bool {
-        self.invert_set ^ self.tile_set.contains(&tile)
+    pub fn contains(&self, tile: &<G as BoardGeometryExt>::Tile) -> bool {
+        self.invert_set ^ self.tile_set.contains(tile)
     }
 
     pub fn is_infinite(&self) -> bool {
@@ -47,6 +46,7 @@ where
     }
 }
 
+#[derive(Debug)]
 pub enum BoardGeometryEnum {
     Triangular(TriangularBoardGeometry),
     Square(SquareBoardGeometry),
@@ -60,11 +60,11 @@ pub trait BoardGeometry: Default + Debug {
 
     /// The number of integer coordinates used to describe a tile.
     // const COORDINATE_DIMENSIONS: usize;
-    type CoordinateDimensions: CoordinateDimensions;
+    type CoordinateDimensions: CoordinateDimensions + Debug;
 
     /// The number of types a tile can be.
     // const TILE_TYPES: usize;
-    type TileTypes: TileTypes;
+    type TileTypes: TileTypes + Debug;
 
     /// Returns `true`, if the coordinates describe a valid tile; `false` otherwise.
     fn is_tile_valid(tile: IVec<Self::CoordinateDimensions>) -> bool;
@@ -77,10 +77,7 @@ pub trait BoardGeometryExt: BoardGeometry {
     type Tile;
 }
 
-impl<T> BoardGeometryExt for T
-where
-    T: BoardGeometry,
-{
+impl<T: BoardGeometry> BoardGeometryExt for T {
     type Tile = IVec<<Self as BoardGeometry>::CoordinateDimensions>;
 }
 
@@ -112,7 +109,6 @@ impl BoardGeometry for TriangularBoardGeometry {
                         (false, 0u8),
                         (false, 2u8),
                     ],
-                    __marker: PhantomData,
                 },
             ];
         }
@@ -146,7 +142,6 @@ impl BoardGeometry for SquareBoardGeometry {
                         (true,  0u8),
                         (false, 1u8),
                     ],
-                    __marker: PhantomData,
                 },
                 // [ ] Swap X and Y
                 AxisPermutation {
@@ -155,7 +150,6 @@ impl BoardGeometry for SquareBoardGeometry {
                         (false, 1u8),
                         (false, 0u8),
                     ],
-                    __marker: PhantomData,
                 },
             ];
         }
@@ -192,7 +186,6 @@ impl BoardGeometry for HexagonalBoardGeometry {
                         (false, 0u8),
                         (false, 2u8),
                     ],
-                    __marker: PhantomData,
                 },
                 // ⟨ ⟩ Horizontal flip (After rotating by 30 degrees)
                 AxisPermutation {
@@ -202,7 +195,6 @@ impl BoardGeometry for HexagonalBoardGeometry {
                         (true, 1u8),
                         (true, 0u8),
                     ],
-                    __marker: PhantomData,
                 },
             ];
         }
@@ -211,38 +203,37 @@ impl BoardGeometry for HexagonalBoardGeometry {
     }
 }
 
-pub struct Symmetry<G>
-where
-    G: BoardGeometry,
-{
+pub struct Symmetry<G: BoardGeometry> {
     pub rotational: bool,
     pub reflectional: bool,
     marker: PhantomData<G>,
 }
 
-#[derive(Clone, Default)]
-pub struct AxisPermutation<G>
-where
-    G: BoardGeometry,
-{
+#[derive(Clone, Default, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct AxisPermutation<G: BoardGeometry> {
     /// An array of signed axes: `(flip sign, axis index)`
     signed_axes: GenericArray<(bool, u8), <G as BoardGeometry>::CoordinateDimensions>,
-    __marker: PhantomData<G>,
 }
 
-impl<G> AxisPermutation<G>
-where
-    G: BoardGeometry,
-{
+impl<G: BoardGeometry> AxisPermutation<G> {
+    pub fn inverse(&self) -> Self {
+        let mut result = AxisPermutation::default();
+
+        for (index, (sign, axis)) in self.signed_axes.iter().enumerate() {
+            result.signed_axes[*axis as usize] = (*sign, index as u8);
+        }
+
+        result
+    }
+
     /// Combine two permutations. Resulting permutation is equivalent to
     /// applying `rhs` followed by `lhs`.
-    pub fn combine(lhs: Self, rhs: Self) -> Self {
+    pub fn combine(lhs: &Self, rhs: &Self) -> Self {
         AxisPermutation {
-            signed_axes: GenericArray::from_exact_iter(lhs.signed_axes.into_iter().map(|(lhs_sign, lhs_axis)| {
-                let (rhs_sign, rhs_axis) = rhs.signed_axes[lhs_axis as usize];
+            signed_axes: GenericArray::from_exact_iter(lhs.signed_axes.iter().map(|(lhs_sign, lhs_axis)| {
+                let (rhs_sign, rhs_axis) = rhs.signed_axes[*lhs_axis as usize];
                 (rhs_sign ^ lhs_sign, rhs_axis)
             })).unwrap(),
-            __marker: Default::default(),
         }
     }
 
@@ -268,19 +259,28 @@ where
 
             AxisPermutation {
                 signed_axes: GenericArray::from_exact_iter(axes).unwrap(),
-                __marker: Default::default(),
             }
         })
     }
+
+    /// Returns the product of `B * A * B^-1`
+    pub fn sandwich_by(&self, sandwich: &Self) -> Self {
+        sandwich * self * sandwich.inverse()
+    }
 }
 
-impl<G> Mul for AxisPermutation<G>
-where
-    G: BoardGeometry,
-{
+impl<G: BoardGeometry> Mul for AxisPermutation<G> {
     type Output = Self;
 
     fn mul(self, rhs: Self) -> Self::Output {
-        Self::combine(self, rhs)
+        Self::combine(&self, &rhs)
+    }
+}
+
+impl<G: BoardGeometry> Mul for &'_ AxisPermutation<G> {
+    type Output = AxisPermutation<G>;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        AxisPermutation::<G>::combine(self, rhs)
     }
 }
