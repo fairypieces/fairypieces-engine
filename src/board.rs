@@ -268,20 +268,47 @@ impl BoardGeometry for SquareBoardGeometry {
         // │Lbl│Lbl│Lbl│Lbl│
         // ┼───┼───┼───┼───┼
         //
-        assert!(!game.board.tiles.invert_set, "Printing of infinite square boards not implemented yet.");
-
-        if game.board.tiles.tile_set.is_empty() {
-            return String::new();
-        }
+        use colored::*;
+        // assert!(!game.board.tiles.invert_set, "Printing of infinite square boards not implemented yet.");
+        assert!(game.players.get() <= 2);
 
         let mut result = String::new();
         let mut min: IVec2 = [i32::MAX; 2].into();
         let mut max: IVec2 = [i32::MIN; 2].into();
 
-        for tile in &game.board.tiles.tile_set {
-            for (c_tile, c_min, c_max) in itertools::multizip((tile, &mut min, &mut max)) {
-                *c_min = std::cmp::min(*c_min, *c_tile);
-                *c_max = std::cmp::max(*c_max, *c_tile);
+        if game.board.tiles.invert_set {
+            const BORDER: usize = 1;
+
+            if game_state.pieces.is_empty() {
+                return String::new();
+            }
+
+            for tile in game_state.pieces.keys() {
+                for (c_tile, c_min, c_max) in itertools::multizip((tile, &mut min, &mut max)) {
+                    *c_min = std::cmp::min(*c_min, *c_tile);
+                    *c_max = std::cmp::max(*c_max, *c_tile);
+                }
+            }
+
+            min -= IVec2::from([BORDER as i32; 2]);
+            max += IVec2::from([BORDER as i32; 2]);
+
+            for tile in &game.board.tiles.tile_set {
+                for (c_tile, c_min, c_max) in itertools::multizip((tile, &mut min, &mut max)) {
+                    *c_min = std::cmp::min(*c_min, *c_tile);
+                    *c_max = std::cmp::max(*c_max, *c_tile);
+                }
+            }
+        } else {
+            if game.board.tiles.tile_set.is_empty() {
+                return String::new();
+            }
+
+            for tile in &game.board.tiles.tile_set {
+                for (c_tile, c_min, c_max) in itertools::multizip((tile, &mut min, &mut max)) {
+                    *c_min = std::cmp::min(*c_min, *c_tile);
+                    *c_max = std::cmp::max(*c_max, *c_tile);
+                }
             }
         }
 
@@ -348,6 +375,11 @@ impl BoardGeometry for SquareBoardGeometry {
             ]
         }
 
+        const COLORS: [[[u8; 3]; 2]; 2] = [
+            [[0x00, 0x00, 0x00], [0xFF, 0xFF, 0xFF]],
+            [[0xFF, 0xFF, 0xFF], [0x00, 0x00, 0x00]],
+        ];
+
         for y in (min[1]..=max[1]).into_iter().rev() {
             let mut row = [
                 String::new(),
@@ -362,8 +394,13 @@ impl BoardGeometry for SquareBoardGeometry {
                     if let Some(piece) = tile.get_piece() {
                         let definition = piece.get_definition(&game.piece_set);
                         let title = &definition.title[0..std::cmp::min(3, definition.title.len())];
+                        let colors = COLORS[piece.owner];
 
-                        Cow::Borrowed(title)
+                        Cow::Owned(
+                            title.truecolor(colors[0][0], colors[0][1], colors[0][2])
+                                 .on_truecolor(colors[1][0], colors[1][1], colors[1][2])
+                                 .to_string()
+                        )
                     } else {
                         Cow::Borrowed("   ")
                     }

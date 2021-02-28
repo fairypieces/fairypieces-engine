@@ -317,20 +317,6 @@ mod tests {
                         }
                     }
 
-                    for y in -8..0 {
-                        for x in 0..8 {
-                            let v = x * 3 + y * 2;
-
-                            if v % 5 == 0 || v % 7 == 0 {
-                                tiles.set([x, y].into(), true);
-                            }
-                        }
-                    }
-
-                    tiles.set([-1, -1].into(), true);
-                    tiles.set([-2, 5].into(), true);
-                    tiles.set([-3, 4].into(), true);
-
                     tiles
                 },
             },
