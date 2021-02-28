@@ -6,7 +6,7 @@
 #![feature(trait_alias)]
 
 use std::num::NonZeroUsize;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, VecDeque, BTreeSet, BTreeMap};
 
 use math::*;
 use board::*;
@@ -48,40 +48,38 @@ impl<G: BoardGeometry> GameState<G> {
         })
     }
 
-    pub fn moves(&self, game: &Game<G>, original_game_state: &GameState<G>, tile: <G as BoardGeometryExt>::Tile) -> Result<Vec<Move<G>>, ()> {
+    pub fn moves(&self, game: &Game<G>, tile: <G as BoardGeometryExt>::Tile) -> Result<Box<[Move<G>]>, ()> {
         let tile_ref = self.tile(&game.board, tile.clone()).ok_or(())?;
         let piece = tile_ref.get_piece().ok_or(())?.clone();
         let definition = piece.get_definition(&game.piece_set);
 
         struct QueueItem<G2: BoardGeometry> {
             tile: <G2 as BoardGeometryExt>::Tile,
+            axis_permutation: AxisPermutation<G2>,
             delta: GameStateDelta<G2>,
             state_index: usize,
         }
 
-        // FIXME: should not contain duplicates
-        let mut valid_moves = Vec::new();
+        let mut valid_moves = BTreeSet::new();
         let mut queue = VecDeque::<QueueItem<G>>::new();
 
         for initial_state_index in &*definition.initial_states {
             queue.push_back(QueueItem {
                 tile: tile.clone(),
+                axis_permutation: Default::default(),
                 delta: Default::default(),
                 state_index: *initial_state_index,
             });
         }
 
         // DFS the moves
-        while let Some(QueueItem { tile, mut delta, state_index }) = queue.pop_front() {
+        while let Some(QueueItem { tile, axis_permutation, mut delta, state_index }) = queue.pop_front() {
             let state = &definition.states[state_index];
-            let game_state = original_game_state.clone().apply(delta.clone());
+            let game_state = self.clone().apply(delta.clone());
             let piece = game_state.tile(&game.board, tile.clone()).ok_or(())?.get_piece().ok_or(())?.clone();
-            let isometry = Isometry {
-                axis_permutation: piece.transformation.clone(),
-                translate: tile.clone(),
-            };
+            let isometry = Isometry::from(axis_permutation.clone() * piece.transformation.clone()) * Isometry::translation(tile.clone());
 
-            let moves: Vec<(_, _)> = match state.action.clone() {
+            let moves: Vec<(_, _, _)> = match state.action.clone() {
                 Action::Move { condition, actions, move_choices } => {
                     if !condition.evaluate(game, &game_state, &isometry) {
                         continue;
@@ -109,9 +107,12 @@ impl<G: BoardGeometry> GameState<G> {
                             let move_choice = isometry.apply(move_choice);
                             let mut delta = delta.clone();
 
-                            delta.affected_pieces.insert(move_choice.clone(), Some(piece.clone()));
+                            if tile != move_choice {
+                                delta.affected_pieces.insert(move_choice.clone(), Some(piece.clone()));
+                                delta.affected_pieces.insert(tile.clone(), None);
+                            }
 
-                            Some((move_choice, delta))
+                            Some((move_choice, axis_permutation.clone(), delta))
                         } else {
                             None
                         }
@@ -119,36 +120,39 @@ impl<G: BoardGeometry> GameState<G> {
                 },
                 Action::Symmetry { symmetries } => {
                     symmetries.into_iter().map(|axis_permutation| {
-                        let mut delta = delta.clone();
-                        let mut piece = piece.clone();
-                        piece.transformation = axis_permutation * piece.transformation;
+                        // let mut delta = delta.clone();
+                        // let mut piece = piece.clone();
+                        // piece.transformation = axis_permutation * piece.transformation;
 
-                        delta.affected_pieces.insert(tile.clone(), Some(piece));
+                        // delta.affected_pieces.insert(tile.clone(), Some(piece));
 
-                        (tile.clone(), delta)
+                        (tile.clone(), axis_permutation, delta.clone())
                     }).collect()
                 },
             };
 
+            for (tile, _, delta) in &moves {
+                if state.is_final {
+                    valid_moves.insert(Move {
+                        delta: delta.clone(),
+                        final_tile: tile.clone(),
+                    });
+                }
+            }
+
             for successor_state_index in &*state.successor_indices {
-                for (tile, delta) in &moves {
+                for (tile, axis_permutation, delta) in &moves {
                     queue.push_back(QueueItem {
                         tile: tile.clone(),
+                        axis_permutation: axis_permutation.clone(),
                         delta: delta.clone(),
                         state_index: *successor_state_index,
                     });
-
-                    if state.is_final {
-                        valid_moves.push(Move {
-                            delta: delta.clone(),
-                            final_tile: tile.clone(),
-                        });
-                    }
                 }
             }
         }
 
-        Ok(valid_moves)
+        Ok(valid_moves.into_iter().collect())
     }
 
     pub fn apply(self, delta: GameStateDelta<G>) -> Self {
@@ -156,15 +160,15 @@ impl<G: BoardGeometry> GameState<G> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Move<G: BoardGeometry> {
     delta: GameStateDelta<G>,
     final_tile: <G as BoardGeometryExt>::Tile,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct GameStateDelta<G: BoardGeometry> {
-    affected_pieces: HashMap<<G as BoardGeometryExt>::Tile, Option<Piece<G>>>,
+    affected_pieces: BTreeMap<<G as BoardGeometryExt>::Tile, Option<Piece<G>>>,
 }
 
 impl<G: BoardGeometry> GameStateDelta<G> {
@@ -370,7 +374,42 @@ mod tests {
             game_state
         };
 
-        print!("{}", SquareBoardGeometry::print(&game, &game_state));
-        // dbg!(game_state);
+        print!("Initial state:\n{}", SquareBoardGeometry::print(&game, &game_state));
+        println!();
+
+        // dbg!(game_state.moves(&game, [3, 1].into()).unwrap());
+
+        let moves: Vec<(IVec2, usize)> = vec![
+            ([3, 1].into(), 0),
+            ([3, 2].into(), 0),
+            ([3, 3].into(), 0),
+            ([3, 4].into(), 0),
+            ([0, 1].into(), 0),
+            ([0, 2].into(), 0),
+            ([0, 3].into(), 0),
+            ([4, 1].into(), 0),
+            ([1, 1].into(), 0),
+            ([3, 0].into(), 0),
+            // ([0, 0].into(), 0),
+        ];
+        // let final_move: IVec2 = [3, 5].into();
+        let final_move: IVec2 = [4, 0].into();
+
+        let mut game_state = game_state;
+
+        for (tile, move_index) in moves {
+            let mv = game_state.moves(&game, tile).unwrap()[move_index].clone();
+            game_state = game_state.apply(mv.delta);
+
+            print!("Move #{}:\n{}", move_index, SquareBoardGeometry::print(&game, &game_state));
+        }
+
+        println!();
+
+        for (move_index, mv) in game_state.moves(&game, final_move).unwrap().into_iter().enumerate() {
+            let next_game_state = game_state.clone().apply(mv.delta.clone());
+
+            print!("Option #{}:\n{}", move_index, SquareBoardGeometry::print(&game, &next_game_state));
+        }
     }
 }

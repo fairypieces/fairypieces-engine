@@ -2,6 +2,7 @@ use std::fmt::Debug;
 use std::collections::HashSet;
 use std::marker::PhantomData;
 use std::ops::{Mul, Neg};
+use std::hash::Hash;
 use std::borrow::Cow;
 use std::fmt::Write;
 use itertools::Itertools;
@@ -80,7 +81,7 @@ pub enum BoardGeometryEnum {
 pub trait CoordinateDimensions = IVecLength + ArrayLength<(bool, u8)>;
 pub trait TileTypes = Unsigned;
 
-pub trait BoardGeometry: Clone + Copy + Default + Debug {
+pub trait BoardGeometry: Clone + Copy + Default + PartialEq + Eq + PartialOrd + Ord + Hash + Debug {
 
     /// The number of integer coordinates used to describe a tile.
     // const COORDINATE_DIMENSIONS: usize;
@@ -111,7 +112,7 @@ impl<T: BoardGeometry> BoardGeometryExt for T {
     type Tile = IVec<<Self as BoardGeometry>::CoordinateDimensions>;
 }
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TriangularBoardGeometry;
 
 impl BoardGeometry for TriangularBoardGeometry {
@@ -197,7 +198,7 @@ impl BoardGeometry for TriangularBoardGeometry {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SquareBoardGeometry;
 
 impl BoardGeometry for SquareBoardGeometry {
@@ -269,8 +270,7 @@ impl BoardGeometry for SquareBoardGeometry {
         // ┼───┼───┼───┼───┼
         //
         use colored::*;
-        // assert!(!game.board.tiles.invert_set, "Printing of infinite square boards not implemented yet.");
-        assert!(game.players.get() <= 2);
+        assert!(game.players.get() <= 2, "Printing a game with more than 2 players is currently not supported.");
 
         let mut result = String::new();
         let mut min: IVec2 = [i32::MAX; 2].into();
@@ -404,7 +404,7 @@ impl BoardGeometry for SquareBoardGeometry {
                     } else {
                         Cow::Borrowed("   ")
                     }
-                }).unwrap_or(Cow::Borrowed(" ╳ "));
+                }).unwrap_or(Cow::Borrowed(" × "));
 
                 if x == min[0] {
                     row[0].push(border[2][0]);
@@ -434,7 +434,7 @@ impl BoardGeometry for SquareBoardGeometry {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct HexagonalBoardGeometry;
 
 impl BoardGeometry for HexagonalBoardGeometry {

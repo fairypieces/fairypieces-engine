@@ -8,12 +8,173 @@ use crate::board::*;
 lazy_static! {
     pub static ref PIECE_SET_INTERNATIONAL: PieceSet<SquareBoardGeometry> = {
         let definitions = vec![
-            PieceDefinitionUnvalidated::new("Pawn"),
-            PieceDefinitionUnvalidated::new("Rook"),
-            PieceDefinitionUnvalidated::new("Knight"),
-            PieceDefinitionUnvalidated::new("Bishop"),
-            PieceDefinitionUnvalidated::new("Queen"),
-            PieceDefinitionUnvalidated::new("King"),
+            PieceDefinitionUnvalidated::new("Pawn")
+                .with_initial_state(StateUnvalidated::new(Action::Symmetry {
+                    symmetries: vec![
+                        Default::default(),
+                        SquareBoardGeometry::get_reflective_symmetries()[0].clone(),
+                    ].into_iter().collect(),
+                }).with_successors(vec![1, 2]))
+                .with_state(StateUnvalidated::new(Action::Move {
+                    condition: ConditionEnum::all(vec![
+                        ConditionEnum::TilePresent([0, 1].into()),
+                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent([0, 1].into()))),
+                    ]),
+                    actions: Default::default(),
+                    move_choices: vec![Some([0, 1].into())].into_iter().collect(),
+                }).with_final(true))
+                .with_state(StateUnvalidated::new(Action::Move {
+                    condition: ConditionEnum::all(vec![
+                        ConditionEnum::TilePresent([1, 1].into()),
+                        ConditionEnum::PiecePresent([1, 1].into()),
+                        ConditionEnum::PieceControlledByEnemy([1, 1].into()),
+                    ]),
+                    actions: vec![ActionEnum::SetTile {
+                        target: [1, 1].into(),
+                        piece: None,
+                    }].into_iter().collect(),
+                    move_choices: vec![Some([1, 1].into())].into_iter().collect(),
+                }).with_final(true)),
+            PieceDefinitionUnvalidated::new("Rook")
+                .with_initial_state(StateUnvalidated::new(Action::Symmetry {
+                    symmetries: SquareBoardGeometry::get_rotations().into_iter().collect(),
+                }).with_successors(vec![1, 2]))
+                .with_state(StateUnvalidated::new(Action::Move {
+                    condition: ConditionEnum::all(vec![
+                        ConditionEnum::TilePresent([0, 1].into()),
+                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent([0, 1].into()))),
+                    ]),
+                    actions: Default::default(),
+                    move_choices: vec![Some([0, 1].into())].into_iter().collect(),
+                }).with_final(true).with_successors(vec![1, 2]))
+                .with_state(StateUnvalidated::new(Action::Move {
+                    condition: ConditionEnum::all(vec![
+                        ConditionEnum::TilePresent([0, 1].into()),
+                        ConditionEnum::PiecePresent([0, 1].into()),
+                        ConditionEnum::PieceControlledByEnemy([0, 1].into()),
+                    ]),
+                    actions: vec![ActionEnum::SetTile {
+                        target: [0, 1].into(),
+                        piece: None,
+                    }].into_iter().collect(),
+                    move_choices: vec![Some([0, 1].into())].into_iter().collect(),
+                }).with_final(true)),
+            PieceDefinitionUnvalidated::new("Knight")
+                .with_initial_state(StateUnvalidated::new(Action::Symmetry {
+                    symmetries: SquareBoardGeometry::get_rotations().into_iter().flat_map(|rotation| {
+                        vec![
+                            AxisPermutation::default(),
+                            SquareBoardGeometry::get_reflective_symmetries()[1].clone(),
+                        ].into_iter().map(move |reflection| {
+                            rotation.clone() * reflection
+                        })
+                    }).collect()
+                }).with_successor(1))
+                .with_state(StateUnvalidated::new(Action::Move {
+                    condition: ConditionEnum::all(vec![
+                        ConditionEnum::TilePresent([2, 1].into()),
+                        ConditionEnum::PieceControlledByEnemy([2, 1].into()),
+                    ]),
+                    actions: vec![ActionEnum::SetTile {
+                        target: [2, 1].into(),
+                        piece: None,
+                    }].into_iter().collect(),
+                    move_choices: vec![Some([2, 1].into())].into_iter().collect(),
+                }).with_final(true)),
+            PieceDefinitionUnvalidated::new("Bishop")
+                .with_initial_state(StateUnvalidated::new(Action::Symmetry {
+                    symmetries: SquareBoardGeometry::get_rotations().into_iter().collect(),
+                }).with_successors(vec![1, 2]))
+                .with_state(StateUnvalidated::new(Action::Move {
+                    condition: ConditionEnum::all(vec![
+                        ConditionEnum::TilePresent([1, 1].into()),
+                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent([1, 1].into()))),
+                    ]),
+                    actions: Default::default(),
+                    move_choices: vec![Some([1, 1].into())].into_iter().collect(),
+                }).with_final(true).with_successors(vec![1, 2]))
+                .with_state(StateUnvalidated::new(Action::Move {
+                    condition: ConditionEnum::all(vec![
+                        ConditionEnum::TilePresent([1, 1].into()),
+                        ConditionEnum::PiecePresent([1, 1].into()),
+                        ConditionEnum::PieceControlledByEnemy([1, 1].into()),
+                    ]),
+                    actions: vec![ActionEnum::SetTile {
+                        target: [1, 1].into(),
+                        piece: None,
+                    }].into_iter().collect(),
+                    move_choices: vec![Some([1, 1].into())].into_iter().collect(),
+                }).with_final(true)),
+            PieceDefinitionUnvalidated::new("Queen")
+                .with_initial_state(StateUnvalidated::new(Action::Symmetry {
+                    symmetries: SquareBoardGeometry::get_rotations().into_iter().collect(),
+                }).with_successors(vec![1, 2, 3, 4]))
+                .with_state(StateUnvalidated::new(Action::Move {
+                    condition: ConditionEnum::all(vec![
+                        ConditionEnum::TilePresent([0, 1].into()),
+                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent([0, 1].into()))),
+                    ]),
+                    actions: Default::default(),
+                    move_choices: vec![Some([0, 1].into())].into_iter().collect(),
+                }).with_final(true).with_successors(vec![1, 2]))
+                .with_state(StateUnvalidated::new(Action::Move {
+                    condition: ConditionEnum::all(vec![
+                        ConditionEnum::TilePresent([0, 1].into()),
+                        ConditionEnum::PiecePresent([0, 1].into()),
+                        ConditionEnum::PieceControlledByEnemy([0, 1].into()),
+                    ]),
+                    actions: vec![ActionEnum::SetTile {
+                        target: [0, 1].into(),
+                        piece: None,
+                    }].into_iter().collect(),
+                    move_choices: vec![Some([0, 1].into())].into_iter().collect(),
+                }).with_final(true))
+                .with_state(StateUnvalidated::new(Action::Move {
+                    condition: ConditionEnum::all(vec![
+                        ConditionEnum::TilePresent([1, 1].into()),
+                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent([1, 1].into()))),
+                    ]),
+                    actions: Default::default(),
+                    move_choices: vec![Some([1, 1].into())].into_iter().collect(),
+                }).with_final(true).with_successors(vec![3, 4]))
+                .with_state(StateUnvalidated::new(Action::Move {
+                    condition: ConditionEnum::all(vec![
+                        ConditionEnum::TilePresent([1, 1].into()),
+                        ConditionEnum::PiecePresent([1, 1].into()),
+                        ConditionEnum::PieceControlledByEnemy([1, 1].into()),
+                    ]),
+                    actions: vec![ActionEnum::SetTile {
+                        target: [1, 1].into(),
+                        piece: None,
+                    }].into_iter().collect(),
+                    move_choices: vec![Some([1, 1].into())].into_iter().collect(),
+                }).with_final(true)),
+            PieceDefinitionUnvalidated::new("King")
+                .with_initial_state(StateUnvalidated::new(Action::Symmetry {
+                    symmetries: SquareBoardGeometry::get_rotations().into_iter().collect(),
+                }).with_successors(vec![1, 2]))
+                .with_state(StateUnvalidated::new(Action::Move {
+                    condition: ConditionEnum::all(vec![
+                        ConditionEnum::TilePresent([0, 1].into()),
+                        ConditionEnum::PieceControlledByEnemy([0, 1].into()),
+                    ]),
+                    actions: vec![ActionEnum::SetTile {
+                        target: [0, 1].into(),
+                        piece: None,
+                    }].into_iter().collect(),
+                    move_choices: vec![Some([0, 1].into())].into_iter().collect(),
+                }).with_final(true))
+                .with_state(StateUnvalidated::new(Action::Move {
+                    condition: ConditionEnum::all(vec![
+                        ConditionEnum::TilePresent([1, 1].into()),
+                        ConditionEnum::PieceControlledByEnemy([1, 1].into()),
+                    ]),
+                    actions: vec![ActionEnum::SetTile {
+                        target: [1, 1].into(),
+                        piece: None,
+                    }].into_iter().collect(),
+                    move_choices: vec![Some([1, 1].into())].into_iter().collect(),
+                }).with_final(true)),
         ];
 
         PieceSet::from(definitions).unwrap()
@@ -84,7 +245,7 @@ impl<G: BoardGeometry> Piece<G> {
 #[derive(Default, Debug, Clone, Hash, PartialEq, Eq)]
 pub struct PieceDefinitionUnvalidated<G: BoardGeometry> {
     pub title: String,
-    pub states: Vec<State<G>>,
+    pub states: Vec<StateUnvalidated<G>>,
     pub initial_states: Vec<usize>,
 }
 
@@ -97,13 +258,13 @@ impl<G: BoardGeometry> PieceDefinitionUnvalidated<G> {
         }
     }
 
-    pub fn with_initial_state(mut self, state: State<G>) -> Self {
+    pub fn with_initial_state(mut self, state: StateUnvalidated<G>) -> Self {
         self.states.push(state);
         self.initial_states.push(self.states.len() - 1);
         self
     }
 
-    pub fn with_state(mut self, state: State<G>) -> Self {
+    pub fn with_state(mut self, state: StateUnvalidated<G>) -> Self {
         self.states.push(state);
         self
     }
@@ -127,17 +288,18 @@ impl<G: BoardGeometry> PieceDefinitionUnvalidated<G> {
     }
 
     fn assume_validated(mut self) -> PieceDefinition<G> {
-        // Ensure initial state order is invariant
+        // Ensure piece definition equality is invariant over initial state order
         self.initial_states.sort_unstable();
+        self.initial_states.dedup();
 
         PieceDefinition {
             title: self.title,
-            states: self.states.into_boxed_slice(),
+            states: self.states.into_iter().map(|state| state.assume_validated()).collect(),
             initial_states: self.initial_states.into_boxed_slice(),
         }
     }
 
-    fn validate(mut self, definitions: &[PieceDefinitionUnvalidated<G>]) -> Result<PieceDefinition<G>, ()> {
+    fn validate(self, definitions: &[PieceDefinitionUnvalidated<G>]) -> Result<PieceDefinition<G>, ()> {
         self.check_validity(definitions).map(move |()| {
             self.assume_validated()
         })
@@ -178,6 +340,14 @@ pub enum ConditionEnum<G: BoardGeometry> {
 }
 
 impl<G: BoardGeometry> ConditionEnum<G> {
+    pub fn any(conditions: impl IntoIterator<Item=ConditionEnum<G>>) -> Self {
+        ConditionEnum::Any(conditions.into_iter().collect())
+    }
+
+    pub fn all(conditions: impl IntoIterator<Item=ConditionEnum<G>>) -> Self {
+        ConditionEnum::All(conditions.into_iter().collect())
+    }
+
     pub fn evaluate(&self, game: &Game<G>, state: &GameState<G>, isometry: &Isometry<G>) -> bool {
         use ConditionEnum::*;
         match self {
@@ -189,6 +359,7 @@ impl<G: BoardGeometry> ConditionEnum<G> {
             },
             Not(child) => !child.evaluate(game, state, isometry),
             TilePresent(tile) => {
+                let tile = isometry.apply(tile.clone());
                 state.tile(&game.board, tile.clone()).is_some()
             },
             TileTypeIs(tile, ty_index) => {
@@ -221,13 +392,39 @@ impl<G: BoardGeometry> ConditionEnum<G> {
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]
-pub struct State<G: BoardGeometry> {
+pub struct StateUnvalidated<G: BoardGeometry> {
     pub(crate) action: Action<G>,
-    pub(crate) successor_indices: Box<[usize]>,
+    pub(crate) successor_indices: Vec<usize>,
     pub(crate) is_final: bool,
 }
 
-impl<G: BoardGeometry> State<G> {
+impl<G: BoardGeometry> StateUnvalidated<G> {
+    fn new(action: Action<G>) -> Self {
+        Self {
+            action,
+            successor_indices: Vec::new(),
+            is_final: false,
+        }
+    }
+
+    fn with_successor(mut self, successor_index: usize) -> Self {
+        self.successor_indices.push(successor_index);
+        self
+    }
+
+    fn with_successors(mut self, successor_indices: impl IntoIterator<Item=usize>) -> Self {
+        for successor_index in successor_indices {
+            self = self.with_successor(successor_index);
+        }
+
+        self
+    }
+
+    fn with_final(mut self, is_final: bool) -> Self {
+        self.is_final = is_final;
+        self
+    }
+
     fn check_validity(&self, piece: &PieceDefinitionUnvalidated<G>, definitions: &[PieceDefinitionUnvalidated<G>]) -> Result<(), ()> {
         for successor_index in &*self.successor_indices {
             if *successor_index >= piece.states.len() {
@@ -235,8 +432,38 @@ impl<G: BoardGeometry> State<G> {
             }
         }
 
+        self.action.check_validity(piece, definitions)?;
+
         Ok(())
     }
+
+    fn assume_validated(mut self) -> State<G> {
+        // Ensure state equality is invariant over successor state order
+        self.successor_indices.sort_unstable();
+        self.successor_indices.dedup();
+
+        State {
+            action: self.action,
+            successor_indices: self.successor_indices.into_boxed_slice(),
+            is_final: self.is_final,
+        }
+    }
+
+    fn validate(mut self, piece: &PieceDefinitionUnvalidated<G>, definitions: &[PieceDefinitionUnvalidated<G>]) -> Result<State<G>, ()> {
+        self.check_validity(piece, definitions).map(move |()| {
+            self.assume_validated()
+        })
+    }
+}
+
+#[derive(PartialEq, Eq, Hash, Clone, Debug)]
+pub struct State<G: BoardGeometry> {
+    pub(crate) action: Action<G>,
+    pub(crate) successor_indices: Box<[usize]>,
+    pub(crate) is_final: bool,
+}
+
+impl<G: BoardGeometry> State<G> {
 }
 
 /// The ordering of variants is used for the order of evaluation.
@@ -290,7 +517,7 @@ pub enum Action<G: BoardGeometry> {
         move_choices: BTreeSet<Option<<G as BoardGeometryExt>::Tile>>,
     },
     Symmetry {
-        symmetries: Vec<AxisPermutation<G>>,
+        symmetries: BTreeSet<AxisPermutation<G>>,
     },
 }
 
