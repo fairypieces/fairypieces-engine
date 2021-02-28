@@ -9,3 +9,5 @@ edition = "2018"
 [dependencies]
 generic-array = "0.14.4"
 lazy_static = "1.4.0"
+smallvec = "1.4.2"
+itertools = "0.10.0"

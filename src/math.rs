@@ -5,9 +5,36 @@ use generic_array::{GenericArray, ArrayLength};
 
 pub trait IVecLength = ArrayLength<i32>;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 #[repr(transparent)]
 pub struct IVec<D: IVecLength>(pub GenericArray<i32, D>) where GenericArray<i32, D>: Hash + Eq;
+
+impl<'a, D: IVecLength> IntoIterator for &'a IVec<D> {
+    type Item = &'a i32;
+    type IntoIter = <&'a GenericArray<i32, D> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl<'a, D: IVecLength> IntoIterator for &'a mut IVec<D> {
+    type Item = &'a mut i32;
+    type IntoIter = <&'a mut GenericArray<i32, D> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter_mut()
+    }
+}
+
+impl<D: IVecLength> IntoIterator for IVec<D> {
+    type Item = i32;
+    type IntoIter = <GenericArray<i32, D> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
 
 impl<D: IVecLength> AddAssign<i32> for IVec<D> {
     fn add_assign(&mut self, rhs: i32) {
