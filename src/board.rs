@@ -11,7 +11,7 @@ use generic_array::typenum::{self, Unsigned};
 use lazy_static::lazy_static;
 use smallvec::{SmallVec, smallvec};
 use crate::math::*;
-use crate::{Game, GameState};
+use crate::{Game, GameRules, GameState};
 
 #[derive(Debug, Clone)]
 pub struct Board<G: BoardGeometry> {
@@ -100,7 +100,11 @@ pub trait BoardGeometry: Clone + Copy + Default + PartialEq + Eq + PartialOrd + 
 
     fn get_rotations() -> SmallVec<[AxisPermutation<Self>; 3]>;
 
-    fn print(game: &Game<Self>, game_state: &GameState<Self>) -> String;
+    fn print_state(game_rules: &GameRules<Self>, game_state: &GameState<Self>) -> String;
+
+    fn print(game: &Game<Self>) -> String {
+        Self::print_state(&game.rules, &game.current_state)
+    }
 }
 
 /// Automatically impl'd trait for all types that implement `BoardGeometry`.
@@ -155,7 +159,7 @@ impl BoardGeometry for TriangularBoardGeometry {
         AxisPermutation::cycle_axes().collect()
     }
 
-    fn print(game: &Game<Self>, game_state: &GameState<Self>) -> String {
+    fn print_state(game_rules: &GameRules<Self>, game_state: &GameState<Self>) -> String {
         //
         // ⣿ Lbl ⣉⣿⣿⣿⣉ Lbl ⣿ Lbl ⣉⣿⣿⣿⣉ Lbl ⣿
         // ⣿ ⣀⣤⠶⠛⠉ ⣿ ⠉⠛⠶⣤⣀ ⣿ ⣀⣤⠶⠛⠉ ⣿ ⠉⠛⠶⣤⣀ ⣿
@@ -251,7 +255,7 @@ impl BoardGeometry for SquareBoardGeometry {
         ]
     }
 
-    fn print(game: &Game<Self>, game_state: &GameState<Self>) -> String {
+    fn print_state(game_rules: &GameRules<Self>, game_state: &GameState<Self>) -> String {
         //
         // ⣿⠶⠶⠶⣿⠶⠶⠶⣿⠶⠶⠶⣿⠶⠶⠶⣿
         // ⣿Lbl⣿Lbl⣿Lbl⣿Lbl⣿
@@ -270,13 +274,13 @@ impl BoardGeometry for SquareBoardGeometry {
         // ┼───┼───┼───┼───┼
         //
         use colored::*;
-        assert!(game.players.get() <= 2, "Printing a game with more than 2 players is currently not supported.");
+        assert!(game_rules.players.get() <= 2, "Printing a game with more than 2 players is currently not supported.");
 
         let mut result = String::new();
         let mut min: IVec2 = [i32::MAX; 2].into();
         let mut max: IVec2 = [i32::MIN; 2].into();
 
-        if game.board.tiles.invert_set {
+        if game_rules.board.tiles.invert_set {
             const BORDER: usize = 1;
 
             if game_state.pieces.is_empty() {
@@ -293,18 +297,18 @@ impl BoardGeometry for SquareBoardGeometry {
             min -= IVec2::from([BORDER as i32; 2]);
             max += IVec2::from([BORDER as i32; 2]);
 
-            for tile in &game.board.tiles.tile_set {
+            for tile in &game_rules.board.tiles.tile_set {
                 for (c_tile, c_min, c_max) in itertools::multizip((tile, &mut min, &mut max)) {
                     *c_min = std::cmp::min(*c_min, *c_tile);
                     *c_max = std::cmp::max(*c_max, *c_tile);
                 }
             }
         } else {
-            if game.board.tiles.tile_set.is_empty() {
+            if game_rules.board.tiles.tile_set.is_empty() {
                 return String::new();
             }
 
-            for tile in &game.board.tiles.tile_set {
+            for tile in &game_rules.board.tiles.tile_set {
                 for (c_tile, c_min, c_max) in itertools::multizip((tile, &mut min, &mut max)) {
                     *c_min = std::cmp::min(*c_min, *c_tile);
                     *c_max = std::cmp::max(*c_max, *c_tile);
@@ -389,10 +393,10 @@ impl BoardGeometry for SquareBoardGeometry {
 
             for x in min[0]..=max[0] {
                 let tile: IVec2 = [x, y].into();
-                let border = tile_to_border(tile.clone(), &game.board, game_state);
-                let label = game_state.tile(&game.board, tile).map(|tile| {
+                let border = tile_to_border(tile.clone(), &game_rules.board, game_state);
+                let label = game_state.tile(&game_rules.board, tile).map(|tile| {
                     if let Some(piece) = tile.get_piece() {
-                        let definition = piece.get_definition(&game.piece_set);
+                        let definition = piece.get_definition(&game_rules.piece_set);
                         let title = &definition.title[0..std::cmp::min(3, definition.title.len())];
                         let colors = COLORS[piece.owner];
 
@@ -495,7 +499,7 @@ impl BoardGeometry for HexagonalBoardGeometry {
         ]
     }
 
-    fn print(game: &Game<Self>, game_state: &GameState<Self>) -> String {
+    fn print_state(game_rules: &GameRules<Self>, game_state: &GameState<Self>) -> String {
         //
         // ⠉⠛⠶⣤⠶⠛⠉⠛⠶⣤⠶⠛⠉⠛⠶⣤⠶⠛⠉⠛⠶⣤⠶⠛⠉
         // bl ⣿ Lbl ⣿ Lbl ⣿ Lbl ⣿ Lb

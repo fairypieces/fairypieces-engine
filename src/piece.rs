@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 use std::marker::PhantomData;
 use lazy_static::lazy_static;
-use crate::{Game, GameState};
+use crate::{GameRules, GameState};
 use crate::math::*;
 use crate::board::*;
 
@@ -348,7 +348,7 @@ impl<G: BoardGeometry> ConditionEnum<G> {
         ConditionEnum::All(conditions.into_iter().collect())
     }
 
-    pub fn evaluate(&self, game: &Game<G>, state: &GameState<G>, isometry: &Isometry<G>) -> bool {
+    pub fn evaluate(&self, game: &GameRules<G>, state: &GameState<G>, isometry: &Isometry<G>) -> bool {
         use ConditionEnum::*;
         match self {
             Any(children) => {

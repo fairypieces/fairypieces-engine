@@ -5,8 +5,10 @@
 // #![feature(inline_const)]
 #![feature(trait_alias)]
 
+use std::ops::Sub;
 use std::num::NonZeroUsize;
 use std::collections::{HashMap, VecDeque, BTreeSet, BTreeMap};
+use replace_with::replace_with_or_default;
 
 use math::*;
 use board::*;
@@ -18,6 +20,32 @@ pub mod piece;
 
 #[derive(Clone, Debug)]
 pub struct Game<G: BoardGeometry> {
+    pub(crate) rules: GameRules<G>,
+    pub(crate) initial_state: GameState<G>,
+    pub(crate) current_state: GameState<G>,
+    /// A list of normalized deltas.
+    /// Applying all deltas in the given order to `initial_state` produces `current_state`.
+    pub(crate) move_log: Vec<ReversibleGameStateDelta<G>>,
+}
+
+impl<G: BoardGeometry> Game<G> {
+    pub fn new(rules: GameRules<G>, initial_state: GameState<G>) -> Self {
+        Self {
+            rules,
+            current_state: initial_state.clone(),
+            initial_state,
+            move_log: Default::default(),
+        }
+    }
+
+    pub fn append(&mut self, mv: Move<G>) {
+        self.move_log.push(mv.delta.clone());
+        replace_with_or_default(&mut self.current_state, move |current_state| current_state.apply(mv.delta.forward));
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct GameRules<G: BoardGeometry> {
     pub(crate) board: Board<G>,
     pub(crate) piece_set: PieceSet<G>,
     pub(crate) players: NonZeroUsize,
@@ -48,7 +76,7 @@ impl<G: BoardGeometry> GameState<G> {
         })
     }
 
-    pub fn moves(&self, game: &Game<G>, tile: <G as BoardGeometryExt>::Tile) -> Result<Box<[Move<G>]>, ()> {
+    pub fn moves(&self, game: &GameRules<G>, tile: <G as BoardGeometryExt>::Tile) -> Result<Box<[Move<G>]>, ()> {
         let tile_ref = self.tile(&game.board, tile.clone()).ok_or(())?;
         let piece = tile_ref.get_piece().ok_or(())?.clone();
         let definition = piece.get_definition(&game.piece_set);
@@ -133,10 +161,11 @@ impl<G: BoardGeometry> GameState<G> {
 
             for (tile, _, delta) in &moves {
                 if state.is_final {
-                    valid_moves.insert(Move {
-                        delta: delta.clone(),
-                        final_tile: tile.clone(),
-                    });
+                    valid_moves.insert(Move::from(
+                        self,
+                        delta.clone(),
+                        tile.clone(),
+                    ));
                 }
             }
 
@@ -160,10 +189,53 @@ impl<G: BoardGeometry> GameState<G> {
     }
 }
 
+impl<'a, G: BoardGeometry> Sub for &'a GameState<G> {
+    type Output = GameStateDelta<G>;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        let mut delta: GameStateDelta<G> = Default::default();
+
+        for (key, lhs_value) in &self.pieces {
+            if rhs.pieces.get(key).map(|rhs_value| rhs_value != lhs_value).unwrap_or(true) {
+                delta.affected_pieces.insert(key.clone(), Some(lhs_value.clone()));
+            }
+        }
+
+        for (key, rhs_value) in &rhs.pieces {
+            if self.pieces.get(key).is_none() {
+                delta.affected_pieces.insert(key.clone(), None);
+            }
+        }
+
+        delta
+    }
+}
+
+/// A move is made up of a normalized state delta and a final tile which is used for selecting this
+/// move in UI.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Move<G: BoardGeometry> {
-    delta: GameStateDelta<G>,
+    delta: ReversibleGameStateDelta<G>,
     final_tile: <G as BoardGeometryExt>::Tile,
+}
+
+impl<G: BoardGeometry> Move<G> {
+    pub fn from(
+        original_state: &GameState<G>,
+        delta: GameStateDelta<G>,
+        final_tile: <G as BoardGeometryExt>::Tile,
+    ) -> Self {
+        Self {
+            delta: delta.normalize(original_state),
+            final_tile,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct ReversibleGameStateDelta<G: BoardGeometry> {
+    forward: GameStateDelta<G>,
+    backward: GameStateDelta<G>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -172,6 +244,15 @@ pub struct GameStateDelta<G: BoardGeometry> {
 }
 
 impl<G: BoardGeometry> GameStateDelta<G> {
+    /// Removes ineffective actions.
+    /// For example, if the delta changes 
+    pub fn normalize(self, state: &GameState<G>) -> ReversibleGameStateDelta<G> {
+        ReversibleGameStateDelta {
+            forward: &state.clone().apply(self.clone()) - state,
+            backward: state - &state.clone().apply(self),
+        }
+    }
+
     pub fn apply_to(self, mut state: GameState<G>) -> GameState<G> {
         for (tile, piece_or_none) in self.affected_pieces {
             if let Some(piece) = piece_or_none {
@@ -188,7 +269,6 @@ impl<G: BoardGeometry> GameStateDelta<G> {
 #[derive(Clone)]
 pub struct TileRef<'a, G: BoardGeometry> {
     tile: <G as BoardGeometryExt>::Tile,
-    // game: &'a Game<G>,
     pieces: &'a HashMap<<G as BoardGeometryExt>::Tile, Piece<G>>,
 }
 
@@ -200,7 +280,6 @@ impl<G: BoardGeometry> TileRef<'_, G> {
 
 pub struct TileRefMut<'a, G: BoardGeometry> {
     tile: <G as BoardGeometryExt>::Tile,
-    // game: &'a mut Game<G>,
     pieces: &'a mut HashMap<<G as BoardGeometryExt>::Tile, Piece<G>>,
 }
 
@@ -310,7 +389,7 @@ mod tests {
     fn simple() {
         use super::*;
 
-        let mut game = Game {
+        let mut game_rules = GameRules {
             board: Board {
                 tiles: {
                     let mut tiles = BoardTiles::empty();
@@ -359,7 +438,7 @@ mod tests {
                         //     dbg!(&coords);
                         // }
 
-                        let mut tile = game_state.tile_mut(&game.board, coords).unwrap();
+                        let mut tile = game_state.tile_mut(&game_rules.board, coords).unwrap();
 
                         tile.set_piece(Some(Piece {
                             definition: *piece,
@@ -374,7 +453,9 @@ mod tests {
             game_state
         };
 
-        print!("Initial state:\n{}", SquareBoardGeometry::print(&game, &game_state));
+        let mut game = Game::new(game_rules, game_state);
+
+        print!("Initial state:\n{}", SquareBoardGeometry::print(&game));
         println!();
 
         // dbg!(game_state.moves(&game, [3, 1].into()).unwrap());
@@ -395,21 +476,20 @@ mod tests {
         // let final_move: IVec2 = [3, 5].into();
         let final_move: IVec2 = [4, 0].into();
 
-        let mut game_state = game_state;
-
         for (tile, move_index) in moves {
-            let mv = game_state.moves(&game, tile).unwrap()[move_index].clone();
-            game_state = game_state.apply(mv.delta);
+            let mv = game.current_state.moves(&game.rules, tile).unwrap()[move_index].clone();
+            game.append(mv);
 
-            print!("Move #{}:\n{}", move_index, SquareBoardGeometry::print(&game, &game_state));
+            print!("Move #{}:\n{}", move_index, SquareBoardGeometry::print(&game));
         }
 
         println!();
 
-        for (move_index, mv) in game_state.moves(&game, final_move).unwrap().into_iter().enumerate() {
-            let next_game_state = game_state.clone().apply(mv.delta.clone());
+        for (move_index, mv) in game.current_state.moves(&game.rules, final_move).unwrap().into_iter().enumerate() {
+            let mut game = game.clone();
 
-            print!("Option #{}:\n{}", move_index, SquareBoardGeometry::print(&game, &next_game_state));
+            game.append(mv.clone());
+            print!("Option #{}:\n{}", move_index, SquareBoardGeometry::print(&game));
         }
     }
 }
