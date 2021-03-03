@@ -103,7 +103,7 @@ pub trait BoardGeometry: Clone + Copy + Default + PartialEq + Eq + PartialOrd + 
     fn print_state(game_rules: &GameRules<Self>, game_state: &GameState<Self>) -> String;
 
     fn print(game: &Game<Self>) -> String {
-        Self::print_state(&game.rules, &game.current_state)
+        Self::print_state(&game.rules, &game.move_log.current_state)
     }
 }
 

@@ -1,36 +1,81 @@
 use std::collections::BTreeSet;
 use std::marker::PhantomData;
 use lazy_static::lazy_static;
-use crate::{GameRules, GameState};
+use crate::{GameRules, GameState, Game};
 use crate::math::*;
 use crate::board::*;
 
 lazy_static! {
     pub static ref PIECE_SET_INTERNATIONAL: PieceSet<SquareBoardGeometry> = {
         let definitions = vec![
+            // TODO: Promote when last row reached
             PieceDefinitionUnvalidated::new("Pawn")
                 .with_initial_state(StateUnvalidated::new(Action::Symmetry {
                     symmetries: vec![
                         Default::default(),
                         SquareBoardGeometry::get_reflective_symmetries()[0].clone(),
                     ].into_iter().collect(),
-                }).with_successors(vec![1, 2]))
+                }).with_successors(vec![1, 2, 3, 4]))
+                // Advance by 1 tile
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
-                        ConditionEnum::TilePresent([0, 1].into()),
-                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent([0, 1].into()))),
+                        ConditionEnum::TilePresent { before_moves: 0, tile: [0, 1].into() },
+                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 0, tile: [0, 1].into() })),
                     ]),
                     actions: Default::default(),
                     move_choices: vec![Some([0, 1].into())].into_iter().collect(),
                 }).with_final(true))
+                // Advance by 2 tiles
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
-                        ConditionEnum::TilePresent([1, 1].into()),
-                        ConditionEnum::PiecePresent([1, 1].into()),
-                        ConditionEnum::PieceControlledByEnemy([1, 1].into()),
+                        ConditionEnum::PieceInitial { before_moves: 0, tile: [0, 0].into() },
+                        ConditionEnum::TilePresent { before_moves: 0, tile: [0, 1].into() },
+                        ConditionEnum::TilePresent { before_moves: 0, tile: [0, 2].into() },
+                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 0, tile: [0, 1].into() })),
+                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 0, tile: [0, 2].into() })),
+                    ]),
+                    actions: Default::default(),
+                    move_choices: vec![Some([0, 2].into())].into_iter().collect(),
+                }).with_final(true))
+                // Take diagonally
+                .with_state(StateUnvalidated::new(Action::Move {
+                    condition: ConditionEnum::all(vec![
+                        ConditionEnum::TilePresent { before_moves: 0, tile: [1, 1].into() },
+                        ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 1].into() },
+                        ConditionEnum::PieceControlledByEnemy { before_moves: 0, tile: [1, 1].into() },
                     ]),
                     actions: vec![ActionEnum::SetTile {
                         target: [1, 1].into(),
+                        piece: None,
+                    }].into_iter().collect(),
+                    move_choices: vec![Some([1, 1].into())].into_iter().collect(),
+                }).with_final(true))
+                // En-passant
+                .with_state(StateUnvalidated::new(Action::Move {
+                    condition: ConditionEnum::all(vec![
+                        // Check enemy pawn has been advanced by two tiles in the previous move
+                        ConditionEnum::MovesPlayedGreaterThanOrEqual(1),
+                        // Before previous move:
+                        ConditionEnum::TilePresent { before_moves: 1, tile: [1, 2].into() },
+                        ConditionEnum::TilePresent { before_moves: 1, tile: [1, 1].into() },
+                        ConditionEnum::TilePresent { before_moves: 1, tile: [1, 0].into() },
+                        ConditionEnum::PiecePresent { before_moves: 1, tile: [1, 2].into() },
+                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 1, tile: [1, 1].into() })),
+                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 1, tile: [1, 0].into() })),
+                        ConditionEnum::PieceTypeIs { before_moves: 1, tile: [1, 2].into(), definition_index: PIECE_INTERNATIONAL_PAWN },
+                        ConditionEnum::PieceControlledByEnemy { before_moves: 1, tile: [1, 2].into() },
+                        // After previous move:
+                        ConditionEnum::TilePresent { before_moves: 0, tile: [1, 2].into() },
+                        ConditionEnum::TilePresent { before_moves: 0, tile: [1, 1].into() },
+                        ConditionEnum::TilePresent { before_moves: 0, tile: [1, 0].into() },
+                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 2].into() })),
+                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 1].into() })),
+                        ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 0].into() },
+                        ConditionEnum::PieceTypeIs { before_moves: 0, tile: [1, 0].into(), definition_index: PIECE_INTERNATIONAL_PAWN },
+                        ConditionEnum::PieceControlledByEnemy { before_moves: 0, tile: [1, 0].into() },
+                    ]),
+                    actions: vec![ActionEnum::SetTile {
+                        target: [1, 0].into(),
                         piece: None,
                     }].into_iter().collect(),
                     move_choices: vec![Some([1, 1].into())].into_iter().collect(),
@@ -41,17 +86,17 @@ lazy_static! {
                 }).with_successors(vec![1, 2]))
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
-                        ConditionEnum::TilePresent([0, 1].into()),
-                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent([0, 1].into()))),
+                        ConditionEnum::TilePresent { before_moves: 0, tile: [0, 1].into() },
+                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 0, tile: [0, 1].into() })),
                     ]),
                     actions: Default::default(),
                     move_choices: vec![Some([0, 1].into())].into_iter().collect(),
                 }).with_final(true).with_successors(vec![1, 2]))
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
-                        ConditionEnum::TilePresent([0, 1].into()),
-                        ConditionEnum::PiecePresent([0, 1].into()),
-                        ConditionEnum::PieceControlledByEnemy([0, 1].into()),
+                        ConditionEnum::TilePresent { before_moves: 0, tile: [0, 1].into() },
+                        ConditionEnum::PiecePresent { before_moves: 0, tile: [0, 1].into() },
+                        ConditionEnum::PieceControlledByEnemy { before_moves: 0, tile: [0, 1].into() },
                     ]),
                     actions: vec![ActionEnum::SetTile {
                         target: [0, 1].into(),
@@ -72,8 +117,8 @@ lazy_static! {
                 }).with_successor(1))
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
-                        ConditionEnum::TilePresent([2, 1].into()),
-                        ConditionEnum::PieceControlledByEnemy([2, 1].into()),
+                        ConditionEnum::TilePresent { before_moves: 0, tile: [2, 1].into() },
+                        ConditionEnum::PieceControlledByEnemy { before_moves: 0, tile: [2, 1].into() },
                     ]),
                     actions: vec![ActionEnum::SetTile {
                         target: [2, 1].into(),
@@ -87,17 +132,17 @@ lazy_static! {
                 }).with_successors(vec![1, 2]))
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
-                        ConditionEnum::TilePresent([1, 1].into()),
-                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent([1, 1].into()))),
+                        ConditionEnum::TilePresent { before_moves: 0, tile: [1, 1].into() },
+                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 1].into() })),
                     ]),
                     actions: Default::default(),
                     move_choices: vec![Some([1, 1].into())].into_iter().collect(),
                 }).with_final(true).with_successors(vec![1, 2]))
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
-                        ConditionEnum::TilePresent([1, 1].into()),
-                        ConditionEnum::PiecePresent([1, 1].into()),
-                        ConditionEnum::PieceControlledByEnemy([1, 1].into()),
+                        ConditionEnum::TilePresent { before_moves: 0, tile: [1, 1].into() },
+                        ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 1].into() },
+                        ConditionEnum::PieceControlledByEnemy { before_moves: 0, tile: [1, 1].into() },
                     ]),
                     actions: vec![ActionEnum::SetTile {
                         target: [1, 1].into(),
@@ -111,17 +156,17 @@ lazy_static! {
                 }).with_successors(vec![1, 2, 3, 4]))
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
-                        ConditionEnum::TilePresent([0, 1].into()),
-                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent([0, 1].into()))),
+                        ConditionEnum::TilePresent { before_moves: 0, tile: [0, 1].into() },
+                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 0, tile: [0, 1].into() })),
                     ]),
                     actions: Default::default(),
                     move_choices: vec![Some([0, 1].into())].into_iter().collect(),
                 }).with_final(true).with_successors(vec![1, 2]))
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
-                        ConditionEnum::TilePresent([0, 1].into()),
-                        ConditionEnum::PiecePresent([0, 1].into()),
-                        ConditionEnum::PieceControlledByEnemy([0, 1].into()),
+                        ConditionEnum::TilePresent { before_moves: 0, tile: [0, 1].into() },
+                        ConditionEnum::PiecePresent { before_moves: 0, tile: [0, 1].into() },
+                        ConditionEnum::PieceControlledByEnemy { before_moves: 0, tile: [0, 1].into() },
                     ]),
                     actions: vec![ActionEnum::SetTile {
                         target: [0, 1].into(),
@@ -131,17 +176,17 @@ lazy_static! {
                 }).with_final(true))
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
-                        ConditionEnum::TilePresent([1, 1].into()),
-                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent([1, 1].into()))),
+                        ConditionEnum::TilePresent { before_moves: 0, tile: [1, 1].into() },
+                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 1].into() })),
                     ]),
                     actions: Default::default(),
                     move_choices: vec![Some([1, 1].into())].into_iter().collect(),
                 }).with_final(true).with_successors(vec![3, 4]))
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
-                        ConditionEnum::TilePresent([1, 1].into()),
-                        ConditionEnum::PiecePresent([1, 1].into()),
-                        ConditionEnum::PieceControlledByEnemy([1, 1].into()),
+                        ConditionEnum::TilePresent { before_moves: 0, tile: [1, 1].into() },
+                        ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 1].into() },
+                        ConditionEnum::PieceControlledByEnemy { before_moves: 0, tile: [1, 1].into() },
                     ]),
                     actions: vec![ActionEnum::SetTile {
                         target: [1, 1].into(),
@@ -155,8 +200,8 @@ lazy_static! {
                 }).with_successors(vec![1, 2]))
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
-                        ConditionEnum::TilePresent([0, 1].into()),
-                        ConditionEnum::PieceControlledByEnemy([0, 1].into()),
+                        ConditionEnum::TilePresent { before_moves: 0, tile: [0, 1].into() },
+                        ConditionEnum::PieceControlledByEnemy { before_moves: 0, tile: [0, 1].into() },
                     ]),
                     actions: vec![ActionEnum::SetTile {
                         target: [0, 1].into(),
@@ -166,15 +211,73 @@ lazy_static! {
                 }).with_final(true))
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
-                        ConditionEnum::TilePresent([1, 1].into()),
-                        ConditionEnum::PieceControlledByEnemy([1, 1].into()),
+                        ConditionEnum::TilePresent { before_moves: 0, tile: [1, 1].into() },
+                        ConditionEnum::PieceControlledByEnemy { before_moves: 0, tile: [1, 1].into() },
                     ]),
                     actions: vec![ActionEnum::SetTile {
                         target: [1, 1].into(),
                         piece: None,
                     }].into_iter().collect(),
                     move_choices: vec![Some([1, 1].into())].into_iter().collect(),
-                }).with_final(true)),
+                }).with_final(true))
+                // Castles (symmetrical)
+                .with_initial_state(StateUnvalidated::new(Action::Symmetry {
+                    symmetries: vec![Default::default(), SquareBoardGeometry::get_reflective_symmetries()[0].clone()].into_iter().collect(),
+                }).with_successors(vec![4, 5]))
+                // King side castle
+                .with_state(StateUnvalidated::new(Action::Move {
+                    condition: ConditionEnum::all(vec![
+                        ConditionEnum::TilePresent { before_moves: 0, tile: [1, 0].into() },
+                        ConditionEnum::TilePresent { before_moves: 0, tile: [2, 0].into() },
+                        ConditionEnum::TilePresent { before_moves: 0, tile: [3, 0].into() },
+                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 0].into() })),
+                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 0, tile: [2, 0].into() })),
+                        ConditionEnum::PiecePresent { before_moves: 0, tile: [3, 0].into() },
+                        ConditionEnum::PieceTypeIs { before_moves: 0, tile: [3, 0].into(), definition_index: PIECE_INTERNATIONAL_ROOK },
+                        ConditionEnum::PieceControlledByAlly { before_moves: 0, tile: [3, 0].into() },
+                        ConditionEnum::PieceInitial { before_moves: 0, tile: [0, 0].into() },
+                        ConditionEnum::PieceInitial { before_moves: 0, tile: [3, 0].into() },
+                    ]),
+                    actions: vec![
+                        ActionEnum::CopyTile {
+                            source: [3, 0].into(),
+                            target: [1, 0].into(),
+                        },
+                        ActionEnum::SetTile {
+                            target: [3, 0].into(),
+                            piece: None,
+                        },
+                    ].into_iter().collect(),
+                    move_choices: vec![Some([2, 0].into())].into_iter().collect(),
+                }).with_final(true))
+                // Queen side castle
+                .with_state(StateUnvalidated::new(Action::Move {
+                    condition: ConditionEnum::all(vec![
+                        ConditionEnum::TilePresent { before_moves: 0, tile: [1, 0].into() },
+                        ConditionEnum::TilePresent { before_moves: 0, tile: [2, 0].into() },
+                        ConditionEnum::TilePresent { before_moves: 0, tile: [3, 0].into() },
+                        ConditionEnum::TilePresent { before_moves: 0, tile: [4, 0].into() },
+                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 0].into() })),
+                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 0, tile: [2, 0].into() })),
+                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 0, tile: [3, 0].into() })),
+                        ConditionEnum::PiecePresent { before_moves: 0, tile: [4, 0].into() },
+                        ConditionEnum::PieceTypeIs { before_moves: 0, tile: [4, 0].into(), definition_index: PIECE_INTERNATIONAL_ROOK },
+                        ConditionEnum::PieceControlledByAlly { before_moves: 0, tile: [4, 0].into() },
+                        ConditionEnum::PieceInitial { before_moves: 0, tile: [0, 0].into() },
+                        ConditionEnum::PieceInitial { before_moves: 0, tile: [4, 0].into() },
+                    ]),
+                    actions: vec![
+                        ActionEnum::CopyTile {
+                            source: [4, 0].into(),
+                            target: [1, 0].into(),
+                        },
+                        ActionEnum::SetTile {
+                            target: [4, 0].into(),
+                            piece: None,
+                        },
+                    ].into_iter().collect(),
+                    move_choices: vec![Some([2, 0].into())].into_iter().collect(),
+                }).with_final(true))
         ];
 
         PieceSet::from(definitions).unwrap()
@@ -222,8 +325,12 @@ pub struct Piece<G: BoardGeometry> {
     // /// Only effective for chiral piece definitions.
     // pub(crate) flip: bool,
     // /// The index of the `PieceDefinition` within the `PieceSet`.
+    /// The index of the piece definition.
     pub(crate) definition: usize,
+    /// The player who owns this piece.
     pub(crate) owner: usize,
+    /// `true` if the piece has not been moved since the beginning of the game, `false` otherwise.
+    pub(crate) initial: bool,
     pub(crate) __marker: PhantomData<G>,
 }
 
@@ -239,6 +346,16 @@ impl<G: BoardGeometry> Piece<G> {
 
     pub fn get_definition<'a>(&'_ self, piece_set: &'a PieceSet<G>) -> &'a PieceDefinition<G> {
         &piece_set.definitions[self.definition]
+    }
+
+    pub fn clone_moved(&self) -> Self {
+        Self {
+            transformation: self.transformation.clone(),
+            definition: self.definition.clone(),
+            owner: self.owner.clone(),
+            initial: false,
+            __marker: Default::default(),
+        }
     }
 }
 
@@ -323,20 +440,59 @@ pub enum ConditionEnum<G: BoardGeometry> {
     All(BTreeSet<ConditionEnum<G>>),
     /// Evaluates to `true` if the inner condition evaluates to `false` and vice versa.
     Not(Box<ConditionEnum<G>>),
+    /// Evaluates to `true` if the number of moves played during the game is greater than or equal
+    /// to the inner value.
+    MovesPlayedGreaterThanOrEqual(usize),
     /// Evaluates to `true` if a tile with those coordinates is present.
-    TilePresent(<G as BoardGeometryExt>::Tile),
+    TilePresent {
+        before_moves: usize,
+        tile: <G as BoardGeometryExt>::Tile,
+    },
     /// Evaluates to `true` if the tile at the given coordinates matches the type.
-    TileTypeIs(<G as BoardGeometryExt>::Tile, usize),
+    TileTypeIs {
+        before_moves: usize,
+        tile: <G as BoardGeometryExt>::Tile,
+        type_index: usize,
+    },
     /// Evaluates to `true` if a piece is present on the given tile.
-    PiecePresent(<G as BoardGeometryExt>::Tile),
-    PieceChiralityIs(<G as BoardGeometryExt>::Tile, bool),
-    PieceRotationIs(<G as BoardGeometryExt>::Tile, usize),
+    PiecePresent {
+        before_moves: usize,
+        tile: <G as BoardGeometryExt>::Tile,
+    },
+    /// Evaluates to `true` if the piece has not been moved since the beginning of the game.
+    PieceInitial {
+        before_moves: usize,
+        tile: <G as BoardGeometryExt>::Tile,
+    },
+    /// Evaluates to `true` if there is no piece on the tile or if the piece's definition index
+    /// matches `definition_index`.
+    PieceTypeIs {
+        before_moves: usize,
+        tile: <G as BoardGeometryExt>::Tile,
+        definition_index: usize,
+    },
+    PieceChiralityIs {
+        before_moves: usize,
+        tile: <G as BoardGeometryExt>::Tile,
+        chirality: bool,
+    },
+    PieceRotationIs {
+        before_moves: usize,
+        tile: <G as BoardGeometryExt>::Tile,
+        rotation_index: usize,
+    },
     /// Evaluates to `true` if there is no piece on the tile or if the piece is allied to the
     /// current player.
-    PieceControlledByAlly(<G as BoardGeometryExt>::Tile),
+    PieceControlledByAlly {
+        before_moves: usize,
+        tile: <G as BoardGeometryExt>::Tile,
+    },
     /// Evaluates to `true` if there is no piece on the tile or if the piece is an enemy to the
     /// current player.
-    PieceControlledByEnemy(<G as BoardGeometryExt>::Tile),
+    PieceControlledByEnemy {
+        before_moves: usize,
+        tile: <G as BoardGeometryExt>::Tile,
+    },
 }
 
 impl<G: BoardGeometry> ConditionEnum<G> {
@@ -348,44 +504,96 @@ impl<G: BoardGeometry> ConditionEnum<G> {
         ConditionEnum::All(conditions.into_iter().collect())
     }
 
-    pub fn evaluate(&self, game: &GameRules<G>, state: &GameState<G>, isometry: &Isometry<G>) -> bool {
+    pub fn evaluate(&self, game: &Game<G>, isometry: &Isometry<G>) -> bool {
         use ConditionEnum::*;
         match self {
             Any(children) => {
-                children.iter().any(|child| child.evaluate(game, state, isometry))
+                children.iter().any(|child| child.evaluate(game, isometry))
             },
             All(children) => {
-                children.iter().all(|child| child.evaluate(game, state, isometry))
+                children.iter().all(|child| child.evaluate(game, isometry))
             },
-            Not(child) => !child.evaluate(game, state, isometry),
-            TilePresent(tile) => {
-                let tile = isometry.apply(tile.clone());
-                state.tile(&game.board, tile.clone()).is_some()
+            Not(child) => !child.evaluate(game, isometry),
+            MovesPlayedGreaterThanOrEqual(moves) => {
+                game.move_log.moves.len() >= *moves
             },
-            TileTypeIs(tile, ty_index) => {
+            TilePresent { before_moves, tile } => {
+                if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*before_moves), game, isometry) {
+                    return true;
+                }
+
                 let tile = isometry.apply(tile.clone());
-                !state.tile(&game.board, tile.clone()).is_some()
-                    || <G as BoardGeometry>::get_tile_type(tile.clone()) == *ty_index
+                game.past_tile(*before_moves, &tile).is_ok()
             },
-            PiecePresent(tile) => {
+            TileTypeIs { before_moves, tile, type_index } => {
+                if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*before_moves), game, isometry)
+                    || !Self::evaluate(&TilePresent { before_moves: *before_moves, tile: tile.clone() }, game, isometry) {
+                    return true;
+                }
+
                 let tile = isometry.apply(tile.clone());
-                state.tile(&game.board, tile.clone()).map(|tile| tile.get_piece().is_some()).unwrap_or(true)
+                <G as BoardGeometry>::get_tile_type(tile.clone()) == *type_index
             },
-            PieceChiralityIs(tile, chirality) => todo!(),
-            PieceRotationIs(tile, rotation_index) => todo!(),
-            PieceControlledByAlly(tile) => {
+            PiecePresent { before_moves, tile } => {
+                if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*before_moves), game, isometry)
+                    || !Self::evaluate(&TilePresent { before_moves: *before_moves, tile: tile.clone() }, game, isometry) {
+                    return true;
+                }
+
                 let tile = isometry.apply(tile.clone());
-                state.tile(&game.board, tile.clone())
-                    .and_then(|tile| tile.get_piece().cloned())
-                    .map(|piece| piece.owner == state.currently_playing_player_index)
-                    .unwrap_or(true)
+                let past_piece = game.past_tile(*before_moves, &tile).unwrap();
+
+                past_piece.is_some()
             },
-            PieceControlledByEnemy(tile) => {
+            PieceInitial { before_moves, tile } => {
+                if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*before_moves), game, isometry)
+                    || !Self::evaluate(&TilePresent { before_moves: *before_moves, tile: tile.clone() }, game, isometry)
+                    || !Self::evaluate(&PiecePresent { before_moves: *before_moves, tile: tile.clone() }, game, isometry) {
+                    return true;
+                }
+
                 let tile = isometry.apply(tile.clone());
-                state.tile(&game.board, tile.clone())
-                    .and_then(|tile| tile.get_piece().cloned())
-                    .map(|piece| piece.owner != state.currently_playing_player_index)
-                    .unwrap_or(true)
+                let past_piece = game.past_tile(*before_moves, &tile).unwrap().unwrap();
+
+                past_piece.initial
+            },
+            PieceTypeIs { before_moves, tile, definition_index } => {
+                if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*before_moves), game, isometry)
+                    || !Self::evaluate(&TilePresent { before_moves: *before_moves, tile: tile.clone() }, game, isometry)
+                    || !Self::evaluate(&PiecePresent { before_moves: *before_moves, tile: tile.clone() }, game, isometry) {
+                    return true;
+                }
+
+                let tile = isometry.apply(tile.clone());
+                let past_piece = game.past_tile(*before_moves, &tile).unwrap().unwrap();
+
+                past_piece.definition == *definition_index
+            },
+            PieceChiralityIs { before_moves, tile, chirality } => todo!(),
+            PieceRotationIs { before_moves, tile, rotation_index } => todo!(),
+            PieceControlledByAlly { before_moves, tile } => {
+                if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*before_moves), game, isometry)
+                    || !Self::evaluate(&TilePresent { before_moves: *before_moves, tile: tile.clone() }, game, isometry)
+                    || !Self::evaluate(&PiecePresent { before_moves: *before_moves, tile: tile.clone() }, game, isometry) {
+                    return true;
+                }
+
+                let tile = isometry.apply(tile.clone());
+                let past_piece = game.past_tile(*before_moves, &tile).unwrap().unwrap();
+
+                past_piece.owner == game.move_log.current_state.currently_playing_player_index
+            },
+            PieceControlledByEnemy { before_moves, tile } => {
+                if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*before_moves), game, isometry)
+                    || !Self::evaluate(&TilePresent { before_moves: *before_moves, tile: tile.clone() }, game, isometry)
+                    || !Self::evaluate(&PiecePresent { before_moves: *before_moves, tile: tile.clone() }, game, isometry) {
+                    return true;
+                }
+
+                let tile = isometry.apply(tile.clone());
+                let past_piece = game.past_tile(*before_moves, &tile).unwrap().unwrap();
+
+                past_piece.owner != game.move_log.current_state.currently_playing_player_index
             },
         }
     }
