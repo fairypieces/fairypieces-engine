@@ -5,7 +5,6 @@ use std::ops::{Mul, Neg};
 use std::hash::Hash;
 use std::borrow::Cow;
 use std::fmt::Write;
-use itertools::Itertools;
 use generic_array::{GenericArray, ArrayLength, arr};
 use generic_array::typenum::{self, Unsigned};
 use lazy_static::lazy_static;
@@ -58,8 +57,8 @@ impl<G: BoardGeometry> BoardTiles<G> {
         }
     }
 
-    pub fn contains(&self, tile: &<G as BoardGeometryExt>::Tile) -> bool {
-        self.invert_set ^ self.tile_set.contains(tile)
+    pub fn contains(&self, tile: <G as BoardGeometryExt>::Tile) -> bool {
+        self.invert_set ^ self.tile_set.contains(&tile)
     }
 
     pub fn is_infinite(&self) -> bool {
@@ -109,6 +108,7 @@ pub trait BoardGeometry: Clone + Copy + Default + PartialEq + Eq + PartialOrd + 
 
 /// Automatically impl'd trait for all types that implement `BoardGeometry`.
 pub trait BoardGeometryExt: BoardGeometry {
+    // Add bounds if needed?
     type Tile;
 }
 
@@ -346,7 +346,7 @@ impl BoardGeometry for SquareBoardGeometry {
             let n: SmallVec<[SmallVec<[bool; 3]>; 3]> = (-1..=1).into_iter().map(|y| {
                 (-1..=1).into_iter().map(|x| {
                     let offset = IVec2::from([x, y]);
-                    let absolute = tile.clone() + offset;
+                    let absolute = tile + offset;
                     game_state.tile(board, absolute).is_some()
                 }).collect()
             }).collect();
@@ -393,7 +393,7 @@ impl BoardGeometry for SquareBoardGeometry {
 
             for x in min[0]..=max[0] {
                 let tile: IVec2 = [x, y].into();
-                let border = tile_to_border(tile.clone(), &game_rules.board, game_state);
+                let border = tile_to_border(tile, &game_rules.board, game_state);
                 let label = game_state.tile(&game_rules.board, tile).map(|tile| {
                     if let Some(piece) = tile.get_piece() {
                         let definition = piece.get_definition(&game_rules.piece_set);
@@ -605,7 +605,7 @@ impl<G: BoardGeometry> Transformation<G> for AxisPermutation<G> {
     }
 
     fn apply(&self, tile: <G as BoardGeometryExt>::Tile) -> <G as BoardGeometryExt>::Tile {
-        let mut result = tile.clone();
+        let mut result = tile;
 
         result.iter_mut().zip(self.signed_axes.iter()).for_each(|(c, (sign, axis))| {
             *c = tile[*axis as usize];
@@ -695,20 +695,20 @@ impl<G: BoardGeometry> From<AxisPermutation<G>> for Isometry<G> {
 impl<G: BoardGeometry> Transformation<G> for Isometry<G> {
     fn inverse(&self) -> Self {
         Isometry {
-            translate: -self.translate.clone(),
+            translate: -self.translate,
             axis_permutation: self.axis_permutation.inverse(),
         }
     }
 
     fn combine(lhs: &Self, rhs: &Self) -> Self {
         Isometry {
-            translate: rhs.translate.clone() + rhs.axis_permutation.apply(lhs.translate.clone()),
+            translate: rhs.translate + rhs.axis_permutation.apply(lhs.translate),
             axis_permutation: &lhs.axis_permutation * &rhs.axis_permutation,
         }
     }
 
     fn apply(&self, tile: <G as BoardGeometryExt>::Tile) -> <G as BoardGeometryExt>::Tile {
-        self.translate.clone() + self.axis_permutation.apply(tile)
+        self.translate + self.axis_permutation.apply(tile)
     }
 }
 

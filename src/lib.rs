@@ -4,6 +4,8 @@
 // #![feature(const_fn)]
 // #![feature(inline_const)]
 #![feature(trait_alias)]
+#![feature(associated_type_bounds)]
+#![feature(const_fn_transmute)]
 
 use math::*;
 use board::*;
@@ -38,12 +40,12 @@ mod tests {
                 [-1,  0,  2].into(),
             ];
 
-            assert!(TriangularBoardGeometry::is_tile_valid(original.clone()));
+            assert!(TriangularBoardGeometry::is_tile_valid(original));
 
-            for (index, (rotation, expected_result)) in TriangularBoardGeometry::get_rotations().into_iter().zip(expected_results.iter().cloned()).enumerate() {
-                let rotated = rotation.apply(original.clone());
+            for (index, (rotation, expected_result)) in TriangularBoardGeometry::get_rotations().into_iter().zip(expected_results.iter().copied()).enumerate() {
+                let rotated = rotation.apply(original);
 
-                assert!(TriangularBoardGeometry::is_tile_valid(rotated.clone()));
+                assert!(TriangularBoardGeometry::is_tile_valid(rotated));
                 assert_eq!(
                     rotated,
                     expected_result,
@@ -63,12 +65,12 @@ mod tests {
                 [ 1, -2].into(),
             ];
 
-            assert!(SquareBoardGeometry::is_tile_valid(original.clone()));
+            assert!(SquareBoardGeometry::is_tile_valid(original));
 
-            for (index, (rotation, expected_result)) in SquareBoardGeometry::get_rotations().into_iter().zip(expected_results.iter().cloned()).enumerate() {
-                let rotated = rotation.apply(original.clone());
+            for (index, (rotation, expected_result)) in SquareBoardGeometry::get_rotations().into_iter().zip(expected_results.iter().copied()).enumerate() {
+                let rotated = rotation.apply(original);
 
-                assert!(SquareBoardGeometry::is_tile_valid(rotated.clone()));
+                assert!(SquareBoardGeometry::is_tile_valid(rotated));
                 assert_eq!(
                     rotated,
                     expected_result,
@@ -90,12 +92,12 @@ mod tests {
                 [ 2, -3,  1].into(),
             ];
 
-            assert!(HexagonalBoardGeometry::is_tile_valid(original.clone()));
+            assert!(HexagonalBoardGeometry::is_tile_valid(original));
 
-            for (index, (rotation, expected_result)) in HexagonalBoardGeometry::get_rotations().into_iter().zip(expected_results.iter().cloned()).enumerate() {
-                let rotated = rotation.apply(original.clone());
+            for (index, (rotation, expected_result)) in HexagonalBoardGeometry::get_rotations().into_iter().zip(expected_results.iter().copied()).enumerate() {
+                let rotated = rotation.apply(original);
 
-                assert!(HexagonalBoardGeometry::is_tile_valid(rotated.clone()));
+                assert!(HexagonalBoardGeometry::is_tile_valid(rotated));
                 assert_eq!(
                     rotated,
                     expected_result,
@@ -109,6 +111,7 @@ mod tests {
     #[test]
     fn simple() {
         use super::*;
+        use crate::games::international_chess::tiles::*;
 
         let mut game = crate::games::international_chess::GAME.clone();
 
@@ -116,28 +119,29 @@ mod tests {
         println!();
 
         // dbg!(game_state.moves(&game, [3, 1].into()).unwrap());
+        println!("A1: {}", B4);
 
         let moves: Vec<(IVec2, IVec2)> = vec![
-            ([1, 1], [1, 3]),
-            ([0, 6], [0, 5]),
-            ([1, 0], [2, 2]),
-            ([1, 6], [1, 5]),
-            ([2, 0], [0, 2]),
-            ([2, 6], [2, 5]),
-            ([4, 1], [4, 3]),
-            ([3, 6], [3, 5]),
-            ([3, 0], [7, 4]),
-            ([4, 6], [4, 5]),
-            ([5, 0], [0, 5]),
-            ([5, 6], [5, 5]),
-            ([6, 0], [5, 2]),
-            ([6, 6], [6, 5]),
-        ].into_iter().map(|(from, to)| (from.into(), to.into())).collect();
-        let final_move: IVec2 = [4, 0].into();
+            (B2, B4),
+            (A7, A6),
+            (B1, C3),
+            (B7, B6),
+            (C1, A3),
+            (C7, C6),
+            (E2, E4),
+            (D7, D6),
+            (D1, H5),
+            (E7, E6),
+            (F1, A6),
+            (F7, F6),
+            (G1, F3),
+            (G7, G6),
+        ];
+        let final_move = E1;
 
         for (tile_from, tile_to) in moves {
             // dbg!(game.moves_from_tile(tile_from.clone()).unwrap());
-            let mv = game.moves_from_tile(tile_from.clone()).unwrap().into_iter()
+            let mv = game.moves_from_tile(tile_from).unwrap().into_iter()
                 .find(|mv| mv.final_tile() == &tile_to)
                 .unwrap_or_else(|| panic!("Move {} -> {} is not valid.", tile_from, tile_to));
 

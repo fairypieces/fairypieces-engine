@@ -351,3 +351,85 @@ lazy_static! {
         GAME_STATE_INITIAL.clone(),
     );
 }
+
+pub mod tiles {
+    use crate::math::IVec2;
+
+    const fn ivec2(x: i32, y: i32) -> IVec2 {
+        unsafe {
+            std::mem::transmute([x, y])
+        }
+    }
+
+    pub const A1: IVec2 = ivec2(0, 0);
+    pub const A2: IVec2 = ivec2(0, 1);
+    pub const A3: IVec2 = ivec2(0, 2);
+    pub const A4: IVec2 = ivec2(0, 3);
+    pub const A5: IVec2 = ivec2(0, 4);
+    pub const A6: IVec2 = ivec2(0, 5);
+    pub const A7: IVec2 = ivec2(0, 6);
+    pub const A8: IVec2 = ivec2(0, 7);
+
+    pub const B1: IVec2 = ivec2(1, 0);
+    pub const B2: IVec2 = ivec2(1, 1);
+    pub const B3: IVec2 = ivec2(1, 2);
+    pub const B4: IVec2 = ivec2(1, 3);
+    pub const B5: IVec2 = ivec2(1, 4);
+    pub const B6: IVec2 = ivec2(1, 5);
+    pub const B7: IVec2 = ivec2(1, 6);
+    pub const B8: IVec2 = ivec2(1, 7);
+
+    pub const C1: IVec2 = ivec2(2, 0);
+    pub const C2: IVec2 = ivec2(2, 1);
+    pub const C3: IVec2 = ivec2(2, 2);
+    pub const C4: IVec2 = ivec2(2, 3);
+    pub const C5: IVec2 = ivec2(2, 4);
+    pub const C6: IVec2 = ivec2(2, 5);
+    pub const C7: IVec2 = ivec2(2, 6);
+    pub const C8: IVec2 = ivec2(2, 7);
+
+    pub const D1: IVec2 = ivec2(3, 0);
+    pub const D2: IVec2 = ivec2(3, 1);
+    pub const D3: IVec2 = ivec2(3, 2);
+    pub const D4: IVec2 = ivec2(3, 3);
+    pub const D5: IVec2 = ivec2(3, 4);
+    pub const D6: IVec2 = ivec2(3, 5);
+    pub const D7: IVec2 = ivec2(3, 6);
+    pub const D8: IVec2 = ivec2(3, 7);
+
+    pub const E1: IVec2 = ivec2(4, 0);
+    pub const E2: IVec2 = ivec2(4, 1);
+    pub const E3: IVec2 = ivec2(4, 2);
+    pub const E4: IVec2 = ivec2(4, 3);
+    pub const E5: IVec2 = ivec2(4, 4);
+    pub const E6: IVec2 = ivec2(4, 5);
+    pub const E7: IVec2 = ivec2(4, 6);
+    pub const E8: IVec2 = ivec2(4, 7);
+
+    pub const F1: IVec2 = ivec2(5, 0);
+    pub const F2: IVec2 = ivec2(5, 1);
+    pub const F3: IVec2 = ivec2(5, 2);
+    pub const F4: IVec2 = ivec2(5, 3);
+    pub const F5: IVec2 = ivec2(5, 4);
+    pub const F6: IVec2 = ivec2(5, 5);
+    pub const F7: IVec2 = ivec2(5, 6);
+    pub const F8: IVec2 = ivec2(5, 7);
+
+    pub const G1: IVec2 = ivec2(6, 0);
+    pub const G2: IVec2 = ivec2(6, 1);
+    pub const G3: IVec2 = ivec2(6, 2);
+    pub const G4: IVec2 = ivec2(6, 3);
+    pub const G5: IVec2 = ivec2(6, 4);
+    pub const G6: IVec2 = ivec2(6, 5);
+    pub const G7: IVec2 = ivec2(6, 6);
+    pub const G8: IVec2 = ivec2(6, 7);
+
+    pub const H1: IVec2 = ivec2(7, 0);
+    pub const H2: IVec2 = ivec2(7, 1);
+    pub const H3: IVec2 = ivec2(7, 2);
+    pub const H4: IVec2 = ivec2(7, 3);
+    pub const H5: IVec2 = ivec2(7, 4);
+    pub const H6: IVec2 = ivec2(7, 5);
+    pub const H7: IVec2 = ivec2(7, 6);
+    pub const H8: IVec2 = ivec2(7, 7);
+}

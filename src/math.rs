@@ -4,11 +4,11 @@ use std::fmt::{Display, Debug};
 use generic_array::typenum;
 use generic_array::{GenericArray, ArrayLength};
 
-pub trait IVecLength = ArrayLength<i32>;
+pub trait IVecLength = ArrayLength<i32, ArrayType: Copy> + Hash + PartialEq + Eq + PartialOrd + Ord;
 
-#[derive(Debug, Default)]
+#[derive(Copy, Clone, Debug, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
-pub struct IVec<D: IVecLength>(pub GenericArray<i32, D>) where GenericArray<i32, D>: Hash + Eq;
+pub struct IVec<D: IVecLength>(pub GenericArray<i32, D>);
 
 impl<D: IVecLength> Display for IVec<D> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -209,38 +209,6 @@ impl<D: IVecLength> Neg for IVec<D> {
     fn neg(mut self) -> Self::Output {
         self.iter_mut().for_each(|c| *c = c.neg());
         self
-    }
-}
-
-impl<D: IVecLength> Clone for IVec<D> {
-    fn clone(&self) -> Self {
-        IVec(self.0.clone())
-    }
-}
-
-impl<D: IVecLength> Hash for IVec<D> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.0.hash(state)
-    }
-}
-
-impl<D: IVecLength> PartialEq for IVec<D> {
-    fn eq(&self, other: &Self) -> bool {
-        self.0.eq(&other.0)
-    }
-}
-
-impl<D: IVecLength> Eq for IVec<D> {}
-
-impl<D: IVecLength> PartialOrd for IVec<D> {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.0.partial_cmp(&other.0)
-    }
-}
-
-impl<D: IVecLength> Ord for IVec<D> {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.0.cmp(&other.0)
     }
 }
 

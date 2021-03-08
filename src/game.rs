@@ -59,7 +59,7 @@ impl<G: BoardGeometry> Game<G> {
 
         for (tile, piece) in &self.move_log.current_state.pieces {
             if piece.owner == current_player {
-                if let Ok(available_moves) = self.moves_from_tile(tile.clone()) {
+                if let Ok(available_moves) = self.moves_from_tile(*tile) {
                     result.extend(available_moves);
                 }
             }
@@ -98,7 +98,7 @@ impl<G: BoardGeometry> Game<G> {
     }
 
     /// Returns the piece at tile `tile` on the board `before_moves` moves ago.
-    pub fn past_tile(&self, before_moves: usize, tile: &<G as BoardGeometryExt>::Tile) -> Result<Option<&Piece<G>>, PastTileError> {
+    pub fn past_tile(&self, before_moves: usize, tile: <G as BoardGeometryExt>::Tile) -> Result<Option<&Piece<G>>, PastTileError> {
         if before_moves > self.move_log.moves.len() {
             return Err(PastTileError::PrecedingStart);
         }
@@ -111,19 +111,19 @@ impl<G: BoardGeometry> Game<G> {
             let moves_played_since = &self.move_log.moves[(self.move_log.moves.len() - before_moves)..];
 
             for mv in moves_played_since {
-                if let Some(piece) = mv.backward.affected_pieces.get(tile) {
+                if let Some(piece) = mv.backward.affected_pieces.get(&tile) {
                     return Ok(piece.as_ref());
                 }
             }
         }
 
-        Ok(self.move_log.current_state.pieces.get(tile))
+        Ok(self.move_log.current_state.pieces.get(&tile))
     }
 
     pub fn moves_from_tile(&self, tile: <G as BoardGeometryExt>::Tile) -> Result<HashSet<Move<G>>, ()> {
         // TODO: generalize
         let next_player = (self.move_log.current_state.currently_playing_player_index + 1) % self.rules.players.get();
-        let tile_ref = self.move_log.current_state.tile(&self.rules.board, tile.clone()).ok_or(())?;
+        let tile_ref = self.move_log.current_state.tile(&self.rules.board, tile).ok_or(())?;
         let piece = tile_ref.get_piece().ok_or(())?.clone();
 
         if self.move_log.current_state.currently_playing_player_index != piece.owner {
@@ -144,7 +144,7 @@ impl<G: BoardGeometry> Game<G> {
 
         for initial_state_index in &*definition.initial_states {
             queue.push_back(QueueItem {
-                tile: tile.clone(),
+                tile,
                 axis_permutation: Default::default(),
                 delta: GameStateDelta::with_next_player(next_player),
                 state_index: *initial_state_index,
@@ -155,8 +155,8 @@ impl<G: BoardGeometry> Game<G> {
         while let Some(QueueItem { tile, axis_permutation, mut delta, state_index }) = queue.pop_front() {
             let state = &definition.states[state_index];
             let game_state = self.move_log.current_state.clone().apply(delta.clone());
-            let piece = game_state.tile(&self.rules.board, tile.clone()).ok_or(())?.get_piece().ok_or(())?.clone();
-            let isometry = Isometry::from(axis_permutation.clone() * piece.transformation.clone()) * Isometry::translation(tile.clone());
+            let piece = game_state.tile(&self.rules.board, tile).ok_or(())?.get_piece().ok_or(())?.clone();
+            let isometry = Isometry::from(axis_permutation.clone() * piece.transformation.clone()) * Isometry::translation(tile);
 
             let moves: Vec<(_, _, _)> = match state.action.clone() {
                 Action::Move { condition, actions, move_choices } => {
@@ -187,8 +187,8 @@ impl<G: BoardGeometry> Game<G> {
                             let mut delta = delta.clone();
 
                             if tile != move_choice {
-                                delta.affected_pieces.insert(move_choice.clone(), Some(piece.clone_moved()));
-                                delta.affected_pieces.insert(tile.clone(), None);
+                                delta.affected_pieces.insert(move_choice, Some(piece.clone_moved()));
+                                delta.affected_pieces.insert(tile, None);
                             }
 
                             Some((move_choice, axis_permutation.clone(), delta))
@@ -205,7 +205,7 @@ impl<G: BoardGeometry> Game<G> {
 
                         // delta.affected_pieces.insert(tile.clone(), Some(piece));
 
-                        (tile.clone(), axis_permutation, delta.clone())
+                        (tile, axis_permutation, delta.clone())
                     }).collect()
                 },
             };
@@ -215,7 +215,7 @@ impl<G: BoardGeometry> Game<G> {
                     valid_moves.insert(Move::from(
                         &self.move_log.current_state,
                         delta.clone(),
-                        tile.clone(),
+                        *tile,
                     ));
                 }
             }
@@ -223,7 +223,7 @@ impl<G: BoardGeometry> Game<G> {
             for successor_state_index in &*state.successor_indices {
                 for (tile, axis_permutation, delta) in &moves {
                     queue.push_back(QueueItem {
-                        tile: tile.clone(),
+                        tile: *tile,
                         axis_permutation: axis_permutation.clone(),
                         delta: delta.clone(),
                         state_index: *successor_state_index,
@@ -251,7 +251,7 @@ pub struct GameState<G: BoardGeometry> {
 
 impl<G: BoardGeometry> GameState<G> {
     pub fn tile(&self, board: &Board<G>, tile: <G as BoardGeometryExt>::Tile) -> Option<TileRef<'_, G>> {
-        board.tiles().contains(&tile).then(move || {
+        board.tiles().contains(tile).then(move || {
             TileRef {
                 tile,
                 pieces: &self.pieces,
@@ -260,7 +260,7 @@ impl<G: BoardGeometry> GameState<G> {
     }
 
     pub fn tile_mut(&mut self, board: &Board<G>, tile: <G as BoardGeometryExt>::Tile) -> Option<TileRefMut<'_, G>> {
-        board.tiles().contains(&tile).then(move || {
+        board.tiles().contains(tile).then(move || {
             TileRefMut {
                 tile,
                 pieces: &mut self.pieces,
@@ -281,13 +281,13 @@ impl<'a, G: BoardGeometry> Sub for &'a GameState<G> {
 
         for (key, lhs_value) in &self.pieces {
             if rhs.pieces.get(key).map(|rhs_value| rhs_value != lhs_value).unwrap_or(true) {
-                delta.affected_pieces.insert(key.clone(), Some(lhs_value.clone()));
+                delta.affected_pieces.insert(*key, Some(lhs_value.clone()));
             }
         }
 
         for (key, _rhs_value) in &rhs.pieces {
             if self.pieces.get(key).is_none() {
-                delta.affected_pieces.insert(key.clone(), None);
+                delta.affected_pieces.insert(*key, None);
             }
         }
 
@@ -392,7 +392,7 @@ impl<G: BoardGeometry> TileRefMut<'_, G> {
 
     pub fn set_piece(&mut self, piece: Option<Piece<G>>) {
         if let Some(piece) = piece {
-            self.pieces.insert(self.tile.clone(), piece);
+            self.pieces.insert(self.tile, piece);
         } else {
             self.pieces.remove(&self.tile);
         }
