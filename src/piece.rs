@@ -5,292 +5,6 @@ use crate::{GameRules, GameState, Game};
 use crate::math::*;
 use crate::board::*;
 
-lazy_static! {
-    pub static ref PIECE_SET_INTERNATIONAL: PieceSet<SquareBoardGeometry> = {
-        let definitions = vec![
-            // TODO: Promote when last row reached
-            PieceDefinitionUnvalidated::new("Pawn")
-                .with_initial_state(StateUnvalidated::new(Action::Symmetry {
-                    symmetries: vec![
-                        Default::default(),
-                        SquareBoardGeometry::get_reflective_symmetries()[0].clone(),
-                    ].into_iter().collect(),
-                }).with_successors(vec![1, 2, 3, 4]))
-                // Advance by 1 tile
-                .with_state(StateUnvalidated::new(Action::Move {
-                    condition: ConditionEnum::all(vec![
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [0, 1].into() },
-                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 0, tile: [0, 1].into() })),
-                    ]),
-                    actions: Default::default(),
-                    move_choices: vec![Some([0, 1].into())].into_iter().collect(),
-                }).with_final(true))
-                // Advance by 2 tiles
-                .with_state(StateUnvalidated::new(Action::Move {
-                    condition: ConditionEnum::all(vec![
-                        ConditionEnum::PieceInitial { before_moves: 0, tile: [0, 0].into() },
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [0, 1].into() },
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [0, 2].into() },
-                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 0, tile: [0, 1].into() })),
-                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 0, tile: [0, 2].into() })),
-                    ]),
-                    actions: Default::default(),
-                    move_choices: vec![Some([0, 2].into())].into_iter().collect(),
-                }).with_final(true))
-                // Take diagonally
-                .with_state(StateUnvalidated::new(Action::Move {
-                    condition: ConditionEnum::all(vec![
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [1, 1].into() },
-                        ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 1].into() },
-                        ConditionEnum::PieceControlledByEnemy { before_moves: 0, tile: [1, 1].into() },
-                    ]),
-                    actions: vec![ActionEnum::SetTile {
-                        target: [1, 1].into(),
-                        piece: None,
-                    }].into_iter().collect(),
-                    move_choices: vec![Some([1, 1].into())].into_iter().collect(),
-                }).with_final(true))
-                // En-passant
-                .with_state(StateUnvalidated::new(Action::Move {
-                    condition: ConditionEnum::all(vec![
-                        // Check enemy pawn has been advanced by two tiles in the previous move
-                        ConditionEnum::MovesPlayedGreaterThanOrEqual(1),
-                        // Before previous move:
-                        ConditionEnum::TilePresent { before_moves: 1, tile: [1, 2].into() },
-                        ConditionEnum::TilePresent { before_moves: 1, tile: [1, 1].into() },
-                        ConditionEnum::TilePresent { before_moves: 1, tile: [1, 0].into() },
-                        ConditionEnum::PiecePresent { before_moves: 1, tile: [1, 2].into() },
-                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 1, tile: [1, 1].into() })),
-                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 1, tile: [1, 0].into() })),
-                        ConditionEnum::PieceTypeIs { before_moves: 1, tile: [1, 2].into(), definition_index: PIECE_INTERNATIONAL_PAWN },
-                        ConditionEnum::PieceControlledByEnemy { before_moves: 1, tile: [1, 2].into() },
-                        // After previous move:
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [1, 2].into() },
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [1, 1].into() },
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [1, 0].into() },
-                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 2].into() })),
-                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 1].into() })),
-                        ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 0].into() },
-                        ConditionEnum::PieceTypeIs { before_moves: 0, tile: [1, 0].into(), definition_index: PIECE_INTERNATIONAL_PAWN },
-                        ConditionEnum::PieceControlledByEnemy { before_moves: 0, tile: [1, 0].into() },
-                    ]),
-                    actions: vec![ActionEnum::SetTile {
-                        target: [1, 0].into(),
-                        piece: None,
-                    }].into_iter().collect(),
-                    move_choices: vec![Some([1, 1].into())].into_iter().collect(),
-                }).with_final(true)),
-            PieceDefinitionUnvalidated::new("Rook")
-                .with_initial_state(StateUnvalidated::new(Action::Symmetry {
-                    symmetries: SquareBoardGeometry::get_rotations().into_iter().collect(),
-                }).with_successors(vec![1, 2]))
-                .with_state(StateUnvalidated::new(Action::Move {
-                    condition: ConditionEnum::all(vec![
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [0, 1].into() },
-                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 0, tile: [0, 1].into() })),
-                    ]),
-                    actions: Default::default(),
-                    move_choices: vec![Some([0, 1].into())].into_iter().collect(),
-                }).with_final(true).with_successors(vec![1, 2]))
-                .with_state(StateUnvalidated::new(Action::Move {
-                    condition: ConditionEnum::all(vec![
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [0, 1].into() },
-                        ConditionEnum::PiecePresent { before_moves: 0, tile: [0, 1].into() },
-                        ConditionEnum::PieceControlledByEnemy { before_moves: 0, tile: [0, 1].into() },
-                    ]),
-                    actions: vec![ActionEnum::SetTile {
-                        target: [0, 1].into(),
-                        piece: None,
-                    }].into_iter().collect(),
-                    move_choices: vec![Some([0, 1].into())].into_iter().collect(),
-                }).with_final(true)),
-            PieceDefinitionUnvalidated::new("Knight")
-                .with_initial_state(StateUnvalidated::new(Action::Symmetry {
-                    symmetries: SquareBoardGeometry::get_rotations().into_iter().flat_map(|rotation| {
-                        vec![
-                            AxisPermutation::default(),
-                            SquareBoardGeometry::get_reflective_symmetries()[1].clone(),
-                        ].into_iter().map(move |reflection| {
-                            rotation.clone() * reflection
-                        })
-                    }).collect()
-                }).with_successor(1))
-                .with_state(StateUnvalidated::new(Action::Move {
-                    condition: ConditionEnum::all(vec![
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [2, 1].into() },
-                        ConditionEnum::PieceControlledByEnemy { before_moves: 0, tile: [2, 1].into() },
-                    ]),
-                    actions: vec![ActionEnum::SetTile {
-                        target: [2, 1].into(),
-                        piece: None,
-                    }].into_iter().collect(),
-                    move_choices: vec![Some([2, 1].into())].into_iter().collect(),
-                }).with_final(true)),
-            PieceDefinitionUnvalidated::new("Bishop")
-                .with_initial_state(StateUnvalidated::new(Action::Symmetry {
-                    symmetries: SquareBoardGeometry::get_rotations().into_iter().collect(),
-                }).with_successors(vec![1, 2]))
-                .with_state(StateUnvalidated::new(Action::Move {
-                    condition: ConditionEnum::all(vec![
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [1, 1].into() },
-                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 1].into() })),
-                    ]),
-                    actions: Default::default(),
-                    move_choices: vec![Some([1, 1].into())].into_iter().collect(),
-                }).with_final(true).with_successors(vec![1, 2]))
-                .with_state(StateUnvalidated::new(Action::Move {
-                    condition: ConditionEnum::all(vec![
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [1, 1].into() },
-                        ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 1].into() },
-                        ConditionEnum::PieceControlledByEnemy { before_moves: 0, tile: [1, 1].into() },
-                    ]),
-                    actions: vec![ActionEnum::SetTile {
-                        target: [1, 1].into(),
-                        piece: None,
-                    }].into_iter().collect(),
-                    move_choices: vec![Some([1, 1].into())].into_iter().collect(),
-                }).with_final(true)),
-            PieceDefinitionUnvalidated::new("Queen")
-                .with_initial_state(StateUnvalidated::new(Action::Symmetry {
-                    symmetries: SquareBoardGeometry::get_rotations().into_iter().collect(),
-                }).with_successors(vec![1, 2, 3, 4]))
-                .with_state(StateUnvalidated::new(Action::Move {
-                    condition: ConditionEnum::all(vec![
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [0, 1].into() },
-                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 0, tile: [0, 1].into() })),
-                    ]),
-                    actions: Default::default(),
-                    move_choices: vec![Some([0, 1].into())].into_iter().collect(),
-                }).with_final(true).with_successors(vec![1, 2]))
-                .with_state(StateUnvalidated::new(Action::Move {
-                    condition: ConditionEnum::all(vec![
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [0, 1].into() },
-                        ConditionEnum::PiecePresent { before_moves: 0, tile: [0, 1].into() },
-                        ConditionEnum::PieceControlledByEnemy { before_moves: 0, tile: [0, 1].into() },
-                    ]),
-                    actions: vec![ActionEnum::SetTile {
-                        target: [0, 1].into(),
-                        piece: None,
-                    }].into_iter().collect(),
-                    move_choices: vec![Some([0, 1].into())].into_iter().collect(),
-                }).with_final(true))
-                .with_state(StateUnvalidated::new(Action::Move {
-                    condition: ConditionEnum::all(vec![
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [1, 1].into() },
-                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 1].into() })),
-                    ]),
-                    actions: Default::default(),
-                    move_choices: vec![Some([1, 1].into())].into_iter().collect(),
-                }).with_final(true).with_successors(vec![3, 4]))
-                .with_state(StateUnvalidated::new(Action::Move {
-                    condition: ConditionEnum::all(vec![
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [1, 1].into() },
-                        ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 1].into() },
-                        ConditionEnum::PieceControlledByEnemy { before_moves: 0, tile: [1, 1].into() },
-                    ]),
-                    actions: vec![ActionEnum::SetTile {
-                        target: [1, 1].into(),
-                        piece: None,
-                    }].into_iter().collect(),
-                    move_choices: vec![Some([1, 1].into())].into_iter().collect(),
-                }).with_final(true)),
-            PieceDefinitionUnvalidated::new("King")
-                .with_initial_state(StateUnvalidated::new(Action::Symmetry {
-                    symmetries: SquareBoardGeometry::get_rotations().into_iter().collect(),
-                }).with_successors(vec![1, 2]))
-                .with_state(StateUnvalidated::new(Action::Move {
-                    condition: ConditionEnum::all(vec![
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [0, 1].into() },
-                        ConditionEnum::PieceControlledByEnemy { before_moves: 0, tile: [0, 1].into() },
-                    ]),
-                    actions: vec![ActionEnum::SetTile {
-                        target: [0, 1].into(),
-                        piece: None,
-                    }].into_iter().collect(),
-                    move_choices: vec![Some([0, 1].into())].into_iter().collect(),
-                }).with_final(true))
-                .with_state(StateUnvalidated::new(Action::Move {
-                    condition: ConditionEnum::all(vec![
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [1, 1].into() },
-                        ConditionEnum::PieceControlledByEnemy { before_moves: 0, tile: [1, 1].into() },
-                    ]),
-                    actions: vec![ActionEnum::SetTile {
-                        target: [1, 1].into(),
-                        piece: None,
-                    }].into_iter().collect(),
-                    move_choices: vec![Some([1, 1].into())].into_iter().collect(),
-                }).with_final(true))
-                // Castles (symmetrical)
-                .with_initial_state(StateUnvalidated::new(Action::Symmetry {
-                    symmetries: vec![Default::default(), SquareBoardGeometry::get_reflective_symmetries()[0].clone()].into_iter().collect(),
-                }).with_successors(vec![4, 5]))
-                // King side castle
-                .with_state(StateUnvalidated::new(Action::Move {
-                    condition: ConditionEnum::all(vec![
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [1, 0].into() },
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [2, 0].into() },
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [3, 0].into() },
-                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 0].into() })),
-                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 0, tile: [2, 0].into() })),
-                        ConditionEnum::PiecePresent { before_moves: 0, tile: [3, 0].into() },
-                        ConditionEnum::PieceTypeIs { before_moves: 0, tile: [3, 0].into(), definition_index: PIECE_INTERNATIONAL_ROOK },
-                        ConditionEnum::PieceControlledByAlly { before_moves: 0, tile: [3, 0].into() },
-                        ConditionEnum::PieceInitial { before_moves: 0, tile: [0, 0].into() },
-                        ConditionEnum::PieceInitial { before_moves: 0, tile: [3, 0].into() },
-                    ]),
-                    actions: vec![
-                        ActionEnum::CopyTile {
-                            source: [3, 0].into(),
-                            target: [1, 0].into(),
-                        },
-                        ActionEnum::SetTile {
-                            target: [3, 0].into(),
-                            piece: None,
-                        },
-                    ].into_iter().collect(),
-                    move_choices: vec![Some([2, 0].into())].into_iter().collect(),
-                }).with_final(true))
-                // Queen side castle
-                .with_state(StateUnvalidated::new(Action::Move {
-                    condition: ConditionEnum::all(vec![
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [1, 0].into() },
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [2, 0].into() },
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [3, 0].into() },
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [4, 0].into() },
-                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 0].into() })),
-                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 0, tile: [2, 0].into() })),
-                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 0, tile: [3, 0].into() })),
-                        ConditionEnum::PiecePresent { before_moves: 0, tile: [4, 0].into() },
-                        ConditionEnum::PieceTypeIs { before_moves: 0, tile: [4, 0].into(), definition_index: PIECE_INTERNATIONAL_ROOK },
-                        ConditionEnum::PieceControlledByAlly { before_moves: 0, tile: [4, 0].into() },
-                        ConditionEnum::PieceInitial { before_moves: 0, tile: [0, 0].into() },
-                        ConditionEnum::PieceInitial { before_moves: 0, tile: [4, 0].into() },
-                    ]),
-                    actions: vec![
-                        ActionEnum::CopyTile {
-                            source: [4, 0].into(),
-                            target: [1, 0].into(),
-                        },
-                        ActionEnum::SetTile {
-                            target: [4, 0].into(),
-                            piece: None,
-                        },
-                    ].into_iter().collect(),
-                    move_choices: vec![Some([2, 0].into())].into_iter().collect(),
-                }).with_final(true))
-        ];
-
-        PieceSet::from(definitions).unwrap()
-    };
-}
-
-pub static PIECE_INTERNATIONAL_PAWN: usize   = 0;
-pub static PIECE_INTERNATIONAL_ROOK: usize   = 1;
-pub static PIECE_INTERNATIONAL_KNIGHT: usize = 2;
-pub static PIECE_INTERNATIONAL_BISHOP: usize = 3;
-pub static PIECE_INTERNATIONAL_QUEEN: usize  = 4;
-pub static PIECE_INTERNATIONAL_KING: usize   = 5;
-
 /// A set of pieces whose movesets may refer to each other.
 #[derive(Clone, Debug)]
 pub struct PieceSet<G: BoardGeometry> {
@@ -607,7 +321,7 @@ pub struct StateUnvalidated<G: BoardGeometry> {
 }
 
 impl<G: BoardGeometry> StateUnvalidated<G> {
-    fn new(action: Action<G>) -> Self {
+    pub fn new(action: Action<G>) -> Self {
         Self {
             action,
             successor_indices: Vec::new(),
@@ -615,12 +329,12 @@ impl<G: BoardGeometry> StateUnvalidated<G> {
         }
     }
 
-    fn with_successor(mut self, successor_index: usize) -> Self {
+    pub fn with_successor(mut self, successor_index: usize) -> Self {
         self.successor_indices.push(successor_index);
         self
     }
 
-    fn with_successors(mut self, successor_indices: impl IntoIterator<Item=usize>) -> Self {
+    pub fn with_successors(mut self, successor_indices: impl IntoIterator<Item=usize>) -> Self {
         for successor_index in successor_indices {
             self = self.with_successor(successor_index);
         }
@@ -628,7 +342,7 @@ impl<G: BoardGeometry> StateUnvalidated<G> {
         self
     }
 
-    fn with_final(mut self, is_final: bool) -> Self {
+    pub fn with_final(mut self, is_final: bool) -> Self {
         self.is_final = is_final;
         self
     }
@@ -657,7 +371,7 @@ impl<G: BoardGeometry> StateUnvalidated<G> {
         }
     }
 
-    fn validate(mut self, piece: &PieceDefinitionUnvalidated<G>, definitions: &[PieceDefinitionUnvalidated<G>]) -> Result<State<G>, ()> {
+    pub fn validate(self, piece: &PieceDefinitionUnvalidated<G>, definitions: &[PieceDefinitionUnvalidated<G>]) -> Result<State<G>, ()> {
         self.check_validity(piece, definitions).map(move |()| {
             self.assume_validated()
         })

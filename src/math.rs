@@ -1,5 +1,6 @@
 use std::hash::Hash;
 use std::ops::{Deref, DerefMut, Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign};
+use std::fmt::{Display, Debug};
 use generic_array::typenum;
 use generic_array::{GenericArray, ArrayLength};
 
@@ -8,6 +9,12 @@ pub trait IVecLength = ArrayLength<i32>;
 #[derive(Debug, Default)]
 #[repr(transparent)]
 pub struct IVec<D: IVecLength>(pub GenericArray<i32, D>) where GenericArray<i32, D>: Hash + Eq;
+
+impl<D: IVecLength> Display for IVec<D> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
 
 impl<'a, D: IVecLength> IntoIterator for &'a IVec<D> {
     type Item = &'a i32;
