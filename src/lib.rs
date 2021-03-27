@@ -115,11 +115,7 @@ mod tests {
 
         let mut game = crate::games::international_chess::GAME.clone();
 
-        print!("Initial state:\n{}", SquareBoardGeometry::print(&game));
-        println!();
-
-        // dbg!(game_state.moves(&game, [3, 1].into()).unwrap());
-        println!("A1: {}", B4);
+        println!("Initial state:\n{}", SquareBoardGeometry::print(&game));
 
         let moves: Vec<(IVec2, IVec2)> = vec![
             (B2, B4),

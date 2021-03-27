@@ -2,6 +2,9 @@ use std::num::NonZeroUsize;
 use lazy_static::lazy_static;
 use crate::*;
 
+pub static PLAYER_WHITE: usize = 0;
+pub static PLAYER_BLACK: usize = 1;
+
 pub static PIECE_PAWN: usize   = 0;
 pub static PIECE_ROOK: usize   = 1;
 pub static PIECE_KNIGHT: usize = 2;
@@ -287,22 +290,18 @@ lazy_static! {
         PieceSet::from(definitions).unwrap()
     };
 
-    static ref GAME_RULES: GameRules<SquareBoardGeometry> = GameRules {
-        board: Board {
-            tiles: {
-                let mut tiles = BoardTiles::empty();
+    static ref GAME_BOARD: Board<SquareBoardGeometry> = Board {
+        tiles: {
+            let mut tiles = BoardTiles::empty();
 
-                for y in 0..8 {
-                    for x in 0..8 {
-                        tiles.set([x, y].into(), true);
-                    }
+            for y in 0..8 {
+                for x in 0..8 {
+                    tiles.set([x, y].into(), true);
                 }
+            }
 
-                tiles
-            },
+            tiles
         },
-        piece_set: PIECE_SET.clone(),
-        players: NonZeroUsize::new(2).unwrap(),
     };
 
     static ref GAME_STATE_INITIAL: GameState<SquareBoardGeometry> = {
@@ -330,7 +329,7 @@ lazy_static! {
                 for (x, piece) in row.iter().enumerate() {
                     let mut coords: <SquareBoardGeometry as BoardGeometryExt>::Tile = [x as i32, y as i32].into();
                     coords = isometry.apply(coords);
-                    let mut tile = game_state.tile_mut(&GAME_RULES.board, coords).unwrap();
+                    let mut tile = game_state.tile_mut(&GAME_BOARD, coords).unwrap();
 
                     tile.set_piece(Some(Piece {
                         initial: true,
@@ -346,6 +345,19 @@ lazy_static! {
         game_state
     };
 
+    static ref GAME_RULES: GameRules<SquareBoardGeometry> = GameRules {
+        board: GAME_BOARD.clone(),
+        piece_set: PIECE_SET.clone(),
+        players: NonZeroUsize::new(2).unwrap(),
+        victory_conditions: Box::new(
+            PredictiveVictoryConditions::new(
+                RoyalVictoryConditions::new(RoyalVictoryType::Absolute, &*GAME_STATE_INITIAL)
+                    .with_min_piece_count(PLAYER_WHITE, PIECE_KING, 1)
+                    .with_min_piece_count(PLAYER_BLACK, PIECE_KING, 1)
+            )
+        ),
+    };
+
     pub static ref GAME: Game<SquareBoardGeometry> = Game::new(
         GAME_RULES.clone(),
         GAME_STATE_INITIAL.clone(),
@@ -357,7 +369,7 @@ pub mod tiles {
 
     const fn ivec2(x: i32, y: i32) -> IVec2 {
         unsafe {
-            std::mem::transmute([x, y])
+            std::mem::transmute::<[i32; 2], IVec2>([x, y])
         }
     }
 

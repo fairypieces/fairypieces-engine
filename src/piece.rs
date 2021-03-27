@@ -29,6 +29,10 @@ impl<G: BoardGeometry> PieceSet<G> {
             definitions,
         })
     }
+
+    pub fn definitions(&self) -> &[PieceDefinition<G>] {
+        &self.definitions
+    }
 }
 
 /// A piece with determined rotation and chirality.
@@ -56,6 +60,18 @@ impl<G: BoardGeometry> Piece<G> {
         }
 
         Ok(())
+    }
+
+    pub fn definition_index(&self) -> usize {
+        self.definition
+    }
+
+    pub fn owner(&self) -> usize {
+        self.owner
+    }
+
+    pub fn is_initial(&self) -> bool {
+        self.initial
     }
 
     pub fn get_definition<'a>(&'_ self, piece_set: &'a PieceSet<G>) -> &'a PieceDefinition<G> {
