@@ -1,11 +1,11 @@
 use std::collections::BTreeSet;
-use std::marker::PhantomData;
-use lazy_static::lazy_static;
-use crate::{GameRules, GameState, Game};
+use crate::Game;
 use crate::math::*;
 use crate::board::*;
 
-/// A set of pieces whose movesets may refer to each other.
+// TODO: Improve error types for validation.
+
+/// A set of piece definitions whose movesets may refer to each other.
 #[derive(Clone, Debug)]
 pub struct PieceSet<G: BoardGeometry> {
     definitions: Box<[PieceDefinition<G>]>,
@@ -13,17 +13,11 @@ pub struct PieceSet<G: BoardGeometry> {
 
 impl<G: BoardGeometry> PieceSet<G> {
     /// Validates the pieces and creates a piece set.
-    pub fn from(definitions: impl IntoIterator<Item=PieceDefinitionUnvalidated<G>>) -> Result<Self, ()> {
-        let mut definitions = definitions.into_iter().collect::<Vec<_>>();
-
-        for definition in &definitions {
-
-            for state in &definition.states {
-                state.check_validity(&definition, &definitions)?;
-            }
-        }
-
-        let definitions = definitions.into_iter().map(PieceDefinitionUnvalidated::assume_validated).collect();
+    pub fn from(unvalidated_definitions: impl IntoIterator<Item=PieceDefinitionUnvalidated<G>>) -> Result<Self, ()> {
+        let unvalidated_definitions = unvalidated_definitions.into_iter().collect::<Vec<_>>();
+        let definitions = unvalidated_definitions.clone().into_iter()
+            .map(|definition| definition.validate(&unvalidated_definitions))
+            .collect::<Result<_, _>>()?;
 
         Ok(Self {
             definitions,
@@ -35,25 +29,25 @@ impl<G: BoardGeometry> PieceSet<G> {
     }
 }
 
-/// A piece with determined rotation and chirality.
+/// A piece on the game `Board`.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Piece<G: BoardGeometry> {
-    pub(crate) transformation: AxisPermutation<G>,
-    // pub(crate) rotation_index: usize,
-    // /// Only effective for chiral piece definitions.
-    // pub(crate) flip: bool,
-    // /// The index of the `PieceDefinition` within the `PieceSet`.
     /// The index of the piece definition.
     pub(crate) definition: usize,
+    /// The piece's rotation and/or reflection.
+    pub(crate) transformation: AxisPermutation<G>,
     /// The player who owns this piece.
     pub(crate) owner: usize,
+    // TODO: Replace by tracking the history of moves (their indices to the `MoveLog`)
+    // that affected this piece.
     /// `true` if the piece has not been moved since the beginning of the game, `false` otherwise.
     pub(crate) initial: bool,
-    pub(crate) __marker: PhantomData<G>,
 }
 
 impl<G: BoardGeometry> Piece<G> {
-    fn check_validity(&self, piece: &PieceDefinitionUnvalidated<G>, definitions: &[PieceDefinitionUnvalidated<G>]) -> Result<(), ()> {
+    // TODO: Actually validate pieces that are added to the board.
+    // TODO: Possibly create an `UnvalidatedPiece` type to make it type safe.
+    pub(crate) fn check_validity(&self, definitions: &[PieceDefinitionUnvalidated<G>]) -> Result<(), ()> {
         // TODO validate owner (team)?
         if self.definition >= definitions.len() {
             return Err(());
@@ -78,25 +72,36 @@ impl<G: BoardGeometry> Piece<G> {
         &piece_set.definitions[self.definition]
     }
 
+    /// Clones the piece but sets the `initial` field to `false`, marking the piece
+    /// as having been moved or affected by another piece's move.
     pub fn clone_moved(&self) -> Self {
         Self {
             transformation: self.transformation.clone(),
             definition: self.definition.clone(),
             owner: self.owner.clone(),
             initial: false,
-            __marker: Default::default(),
         }
     }
 }
 
+/// An unvalidated piece definition is used to construct a [`PieceSet`]. See [`PieceDefinition`]
+/// for the purpose and structure of the validated counterpart to this type.
+/// A `PieceDefinitionUnvalidated` used in a successful construction of a [`PieceSet`] becomes
+/// a validated [`PieceDefinition`].
 #[derive(Default, Debug, Clone, Hash, PartialEq, Eq)]
 pub struct PieceDefinitionUnvalidated<G: BoardGeometry> {
+    /// The user-facing (currently not localized) title of the piece.
     pub title: String,
+    /// A list of states making up the state machine, required to be non-empty during [`PieceSet`]
+    /// construction.
     pub states: Vec<StateUnvalidated<G>>,
+    /// A list of indices of initial states, required to be non-empty during [`PieceSet`]
+    /// construction.
     pub initial_states: Vec<usize>,
 }
 
 impl<G: BoardGeometry> PieceDefinitionUnvalidated<G> {
+    /// Creates a new `PieceDefinitionUnvalidated` with the given title and default attributes.
     pub fn new(title: impl ToString) -> Self {
         Self {
             title: title.to_string(),
@@ -105,12 +110,14 @@ impl<G: BoardGeometry> PieceDefinitionUnvalidated<G> {
         }
     }
 
+    /// A builder function to add an initial state to the piece definition's state machine.
     pub fn with_initial_state(mut self, state: StateUnvalidated<G>) -> Self {
         self.states.push(state);
         self.initial_states.push(self.states.len() - 1);
         self
     }
 
+    /// A builder function to add an internal state to the piece definition's state machine.
     pub fn with_state(mut self, state: StateUnvalidated<G>) -> Self {
         self.states.push(state);
         self
@@ -153,13 +160,25 @@ impl<G: BoardGeometry> PieceDefinitionUnvalidated<G> {
     }
 }
 
+/// A piece definition defines the rules by which the piece moves and affects the game board.
+/// The valid moves of a piece are encoded using a state machine with context.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct PieceDefinition<G: BoardGeometry> {
+    /// The user-facing (currently not localized) title of the piece.
     pub(crate) title: String,
+    /// Non-empty list of states making up the state machine.
     pub(crate) states: Box<[State<G>]>,
+    /// Non-empty list of indices of initial states.
     pub(crate) initial_states: Box<[usize]>,
 }
 
+// TODO: Consider splitting this type into two separate types of predicates and operators.
+// TODO: A lot of the predicates are of the form: _assumption_ implies _condition_. If _assumption_
+//       does not hold, then the entire expression is evaluated as true. It might be possible to
+//       cache all of the _assumptions_ that have already been evaluated for this state and reuse
+//       their results.
+/// A condition that must be satisfied in order for a `State` to be processed during
+/// the move generation of a piece.
 #[derive(PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Debug)]
 pub enum ConditionEnum<G: BoardGeometry> {
     /// A boolean OR operation or "disjunction". Evaluates to `true` if any of the inner conditions
@@ -168,6 +187,7 @@ pub enum ConditionEnum<G: BoardGeometry> {
     /// A boolean AND operation or "conjunction". Evaluates to `true` if all of the inner conditions
     /// evaluate to `true`.
     All(BTreeSet<ConditionEnum<G>>),
+    // TODO: Investigate how applying De Morgan's laws could improve the performance.
     /// Evaluates to `true` if the inner condition evaluates to `false` and vice versa.
     Not(Box<ConditionEnum<G>>),
     /// Evaluates to `true` if the number of moves played during the game is greater than or equal
@@ -183,6 +203,12 @@ pub enum ConditionEnum<G: BoardGeometry> {
         before_moves: usize,
         tile: <G as BoardGeometryExt>::Tile,
         type_index: usize,
+    },
+    /// Evaluates to `true` if the tile at the given coordinates has the provided flag.
+    TileFlagPresent {
+        before_moves: usize,
+        tile: <G as BoardGeometryExt>::Tile,
+        flag: u32,
     },
     /// Evaluates to `true` if a piece is present on the given tile.
     PiecePresent {
@@ -201,15 +227,12 @@ pub enum ConditionEnum<G: BoardGeometry> {
         tile: <G as BoardGeometryExt>::Tile,
         definition_index: usize,
     },
-    PieceChiralityIs {
+    /// Evaluates to `true` if there is no piece on the tile or if the piece is controlled by the
+    /// specified player.
+    PieceControlledBy {
         before_moves: usize,
         tile: <G as BoardGeometryExt>::Tile,
-        chirality: bool,
-    },
-    PieceRotationIs {
-        before_moves: usize,
-        tile: <G as BoardGeometryExt>::Tile,
-        rotation_index: usize,
+        player: usize,
     },
     /// Evaluates to `true` if there is no piece on the tile or if the piece is allied to the
     /// current player.
@@ -226,6 +249,10 @@ pub enum ConditionEnum<G: BoardGeometry> {
 }
 
 impl<G: BoardGeometry> ConditionEnum<G> {
+    pub fn not(inner: Self) -> Self {
+        ConditionEnum::Not(Box::new(inner))
+    }
+
     pub fn any(conditions: impl IntoIterator<Item=ConditionEnum<G>>) -> Self {
         ConditionEnum::Any(conditions.into_iter().collect())
     }
@@ -236,7 +263,7 @@ impl<G: BoardGeometry> ConditionEnum<G> {
 
     pub fn evaluate(&self, game: &Game<G>, isometry: &Isometry<G>) -> bool {
         use ConditionEnum::*;
-        match self {
+        let result = match self {
             Any(children) => {
                 children.iter().any(|child| child.evaluate(game, isometry))
             },
@@ -253,7 +280,7 @@ impl<G: BoardGeometry> ConditionEnum<G> {
                 }
 
                 let tile = isometry.apply(*tile);
-                game.past_tile(*before_moves, tile).is_ok()
+                game.past_tile_piece(*before_moves, tile).is_ok()
             },
             TileTypeIs { before_moves, tile, type_index } => {
                 if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*before_moves), game, isometry)
@@ -264,6 +291,16 @@ impl<G: BoardGeometry> ConditionEnum<G> {
                 let tile = isometry.apply(*tile);
                 <G as BoardGeometry>::get_tile_type(tile) == *type_index
             },
+            TileFlagPresent { before_moves, tile, flag } => {
+                if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*before_moves), game, isometry)
+                    || !Self::evaluate(&TilePresent { before_moves: *before_moves, tile: *tile }, game, isometry) {
+                    return true;
+                }
+
+                let tile = isometry.apply(*tile);
+
+                game.past_tile_flag(*before_moves, tile, *flag).unwrap()
+            },
             PiecePresent { before_moves, tile } => {
                 if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*before_moves), game, isometry)
                     || !Self::evaluate(&TilePresent { before_moves: *before_moves, tile: *tile }, game, isometry) {
@@ -271,7 +308,7 @@ impl<G: BoardGeometry> ConditionEnum<G> {
                 }
 
                 let tile = isometry.apply(*tile);
-                let past_piece = game.past_tile(*before_moves, tile).unwrap();
+                let past_piece = game.past_tile_piece(*before_moves, tile).unwrap();
 
                 past_piece.is_some()
             },
@@ -283,7 +320,7 @@ impl<G: BoardGeometry> ConditionEnum<G> {
                 }
 
                 let tile = isometry.apply(*tile);
-                let past_piece = game.past_tile(*before_moves, tile).unwrap().unwrap();
+                let past_piece = game.past_tile_piece(*before_moves, tile).unwrap().unwrap();
 
                 past_piece.initial
             },
@@ -295,12 +332,22 @@ impl<G: BoardGeometry> ConditionEnum<G> {
                 }
 
                 let tile = isometry.apply(*tile);
-                let past_piece = game.past_tile(*before_moves, tile).unwrap().unwrap();
+                let past_piece = game.past_tile_piece(*before_moves, tile).unwrap().unwrap();
 
                 past_piece.definition == *definition_index
             },
-            PieceChiralityIs { before_moves, tile, chirality } => todo!(),
-            PieceRotationIs { before_moves, tile, rotation_index } => todo!(),
+            PieceControlledBy { before_moves, tile, player } => {
+                if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*before_moves), game, isometry)
+                    || !Self::evaluate(&TilePresent { before_moves: *before_moves, tile: *tile }, game, isometry)
+                    || !Self::evaluate(&PiecePresent { before_moves: *before_moves, tile: *tile }, game, isometry) {
+                    return true;
+                }
+
+                let tile = isometry.apply(*tile);
+                let past_piece = game.past_tile_piece(*before_moves, tile).unwrap().unwrap();
+
+                past_piece.owner == *player
+            },
             PieceControlledByAlly { before_moves, tile } => {
                 if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*before_moves), game, isometry)
                     || !Self::evaluate(&TilePresent { before_moves: *before_moves, tile: *tile }, game, isometry)
@@ -309,7 +356,7 @@ impl<G: BoardGeometry> ConditionEnum<G> {
                 }
 
                 let tile = isometry.apply(*tile);
-                let past_piece = game.past_tile(*before_moves, tile).unwrap().unwrap();
+                let past_piece = game.past_tile_piece(*before_moves, tile).unwrap().unwrap();
 
                 past_piece.owner == game.move_log.current_state.currently_playing_player_index
             },
@@ -321,18 +368,30 @@ impl<G: BoardGeometry> ConditionEnum<G> {
                 }
 
                 let tile = isometry.apply(*tile);
-                let past_piece = game.past_tile(*before_moves, tile).unwrap().unwrap();
+                let past_piece = game.past_tile_piece(*before_moves, tile).unwrap().unwrap();
 
                 past_piece.owner != game.move_log.current_state.currently_playing_player_index
             },
-        }
+        };
+
+        result
     }
 }
 
+/// An unvalidated state is used to construct a [`PieceDefinitionUnvalidated`].
+/// See [`State`] for the purpose and structure of the validated counterpart to this type.
+/// A `StateUnvalidated` used in a successful construction of a [`PieceSet`] becomes
+/// a validated [`State`].
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]
 pub struct StateUnvalidated<G: BoardGeometry> {
+    /// The action to perform when this state is visited.
     pub(crate) action: Action<G>,
+    /// The indices of the successor states.
     pub(crate) successor_indices: Vec<usize>,
+    /// If the state is marked as final, the resulting resulting delta (the state of the board
+    /// after the action has been executed) will be used as a pseudo-legal move. A pseudo-legal
+    /// move is a move that would be legal if the victory conditions were not considered (check,
+    /// checkmates in case of international chess).
     pub(crate) is_final: bool,
 }
 
@@ -394,31 +453,36 @@ impl<G: BoardGeometry> StateUnvalidated<G> {
     }
 }
 
+/// A `State` makes up a node of the state machine that generates a piece's moves.
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]
 pub struct State<G: BoardGeometry> {
+    /// The action to perform when this state is visited.
     pub(crate) action: Action<G>,
+    /// The indices of the successor states.
     pub(crate) successor_indices: Box<[usize]>,
+    /// If the state is marked as final, the resulting resulting delta (the state of the board
+    /// after the action has been executed) will be used as a pseudo-legal move. A pseudo-legal
+    /// move is a move that would be legal if the victory conditions were not considered (check,
+    /// checkmates in case of international chess).
     pub(crate) is_final: bool,
 }
 
-impl<G: BoardGeometry> State<G> {
-}
-
-/// The ordering of variants is used for the order of evaluation.
 #[derive(PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Debug)]
 pub enum ActionEnum<G: BoardGeometry> {
     /// Replace the contents of the target tile with a specific piece or clear the target tile.
     SetTile {
-        /// The target tile to change the contents of.
-        target: <G as BoardGeometryExt>::Tile,
         /// The index of the piece within the `PieceSet` to place on the tile
         /// or `None` to clear the tile.
-        piece: Option<Piece<G>>,
+        piece: Option<usize>,
+        // TODO: Should be isometry so that the piece can be rotated as well?
+        /// The target tile to change the contents of.
+        target: <G as BoardGeometryExt>::Tile,
     },
     /// Replace the contents of the target tile with the contents of the source tile.
     CopyTile {
         /// The source tile to copy the contents from.
         source: <G as BoardGeometryExt>::Tile,
+        // TODO: Should be isometry so that the piece can be rotated as well?
         /// The target tile to paste the contents to.
         target: <G as BoardGeometryExt>::Tile,
     },
@@ -432,7 +496,9 @@ impl<G: BoardGeometry> ActionEnum<G> {
         match self {
             SetTile { piece, .. } => {
                 if let Some(piece) = piece {
-                    piece.check_validity(piece_definition, definitions)?;
+                    if *piece >= definitions.len() {
+                        return Err(());
+                    }
                 }
             },
             CopyTile { .. } => (),
@@ -442,18 +508,29 @@ impl<G: BoardGeometry> ActionEnum<G> {
     }
 }
 
-#[derive(PartialEq, Eq, Hash, Clone, Debug)]
+/// An action to be performed when the [`State`] containing this action is visited during
+/// move generation. The action operates on the current state (and context) of the
+/// state machine, equal to the original game state with actions accumulated
+/// from previously visited states.
+#[derive(PartialEq, Eq, Hash, Clone, Debug, PartialOrd, Ord)]
 pub enum Action<G: BoardGeometry> {
+    /// Move the current piece, possibly affecting nearby tiles.
     Move {
-        /// All of these conditions must be satisfied, otherwise the traversal is terminated.
+        /// If this condition is not satisfied, the state is skipped over.
         condition: ConditionEnum<G>,
-        /// All of these actions are performed.
+        /// These actions are performed in undefined order.
+        /// For this reason, actions must be commutative.
         actions: BTreeSet<ActionEnum<G>>,
-        // FIXME: What would `None` represent?
-        // FIXME: Change to Isometry?
-        /// Any of these moves is performed.
-        move_choices: BTreeSet<Option<<G as BoardGeometryExt>::Tile>>,
+        // FIXME: Change to `Isometry` so as to allow pieces to be rotated as well as translated.
+        /// Any of these moves are performed.
+        move_choices: BTreeSet<<G as BoardGeometryExt>::Tile>,
     },
+    /// Make the following moves symmetrical according to the provided symmetries.
+    ///
+    /// For example, the international chess' regular pawn capture moves
+    /// (left and right) can be encoded using a state with identity and reflectional
+    /// symmetry followed by a state that captures only to the right. This will
+    /// result in the move being mirrored and the left capture being generated as well.
     Symmetry {
         symmetries: BTreeSet<AxisPermutation<G>>,
     },

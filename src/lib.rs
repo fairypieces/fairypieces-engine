@@ -4,6 +4,7 @@
 // #![feature(const_fn)]
 // #![feature(inline_const)]
 #![feature(trait_alias)]
+#![feature(format_args_capture)]
 #![feature(associated_type_bounds)]
 #![feature(const_fn_transmute)]
 
@@ -21,11 +22,6 @@ pub mod games;
 #[cfg(test)]
 mod tests {
     use std::num::NonZeroUsize;
-
-    #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
-    }
 
     #[test]
     fn geometries() {
@@ -109,7 +105,7 @@ mod tests {
     }
 
     #[test]
-    fn simple() {
+    fn international_chess_castling() {
         use super::*;
         use crate::games::international_chess::tiles::*;
 
@@ -136,22 +132,25 @@ mod tests {
         let final_move = E1;
 
         for (tile_from, tile_to) in moves {
-            // dbg!(game.moves_from_tile(tile_from.clone()).unwrap());
-            let mv = game.moves_from_tile(tile_from).unwrap().into_iter()
+            let mv = game.available_moves().moves_from(tile_from)
                 .find(|mv| mv.final_tile() == &tile_to)
-                .unwrap_or_else(|| panic!("Move {} -> {} is not valid.", tile_from, tile_to));
+                .unwrap_or_else(|| panic!("Move {} -> {} is not valid.", tile_from, tile_to))
+                .clone();
 
             game.append(mv).unwrap();
             print!("Move {} -> {}:\n{}", tile_from, tile_to, SquareBoardGeometry::print(&game));
         }
 
-        println!();
+        let options: Vec<_> = game.available_moves().moves_from(final_move).collect();
 
-        for (move_index, mv) in game.moves_from_tile(final_move).unwrap().into_iter().enumerate() {
+        assert_eq!(options.len(), 5);
+        println!("Options ({len}):", len=options.len());
+
+        for (move_index, mv) in options.into_iter().enumerate() {
             let mut game = game.clone();
 
             game.append(mv.clone()).unwrap();
-            print!("Option #{}:\n{}", move_index, SquareBoardGeometry::print(&game));
+            print!("Option #{}:\n{}", move_index + 1, SquareBoardGeometry::print(&game));
         }
     }
 }

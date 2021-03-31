@@ -2,6 +2,7 @@ use std::num::NonZeroUsize;
 use lazy_static::lazy_static;
 use crate::*;
 
+// TODO: Consider changing these to enums
 pub static PLAYER_WHITE: usize = 0;
 pub static PLAYER_BLACK: usize = 1;
 
@@ -11,6 +12,9 @@ pub static PIECE_KNIGHT: usize = 2;
 pub static PIECE_BISHOP: usize = 3;
 pub static PIECE_QUEEN: usize  = 4;
 pub static PIECE_KING: usize   = 5;
+
+pub static TILE_FLAG_PROMOTION_WHITE: u32 = 0;
+pub static TILE_FLAG_PROMOTION_BLACK: u32 = 1;
 
 lazy_static! {
     pub static ref PIECE_SET: PieceSet<SquareBoardGeometry> = {
@@ -27,56 +31,53 @@ lazy_static! {
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
                         ConditionEnum::TilePresent { before_moves: 0, tile: [0, 1].into() },
-                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 0, tile: [0, 1].into() })),
+                        ConditionEnum::not(ConditionEnum::PiecePresent { before_moves: 0, tile: [0, 1].into() }),
                     ]),
                     actions: Default::default(),
-                    move_choices: vec![Some([0, 1].into())].into_iter().collect(),
-                }).with_final(true))
+                    move_choices: vec![[0, 1].into()].into_iter().collect(),
+                }).with_successors(vec![5]))
                 // Advance by 2 tiles
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
                         ConditionEnum::PieceInitial { before_moves: 0, tile: [0, 0].into() },
                         ConditionEnum::TilePresent { before_moves: 0, tile: [0, 1].into() },
                         ConditionEnum::TilePresent { before_moves: 0, tile: [0, 2].into() },
-                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 0, tile: [0, 1].into() })),
-                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 0, tile: [0, 2].into() })),
+                        ConditionEnum::not(ConditionEnum::PiecePresent { before_moves: 0, tile: [0, 1].into() }),
+                        ConditionEnum::not(ConditionEnum::PiecePresent { before_moves: 0, tile: [0, 2].into() }),
                     ]),
                     actions: Default::default(),
-                    move_choices: vec![Some([0, 2].into())].into_iter().collect(),
-                }).with_final(true))
-                // Take diagonally
+                    move_choices: vec![[0, 2].into()].into_iter().collect(),
+                }).with_successors(vec![5]))
+                // Capture diagonally
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
                         ConditionEnum::TilePresent { before_moves: 0, tile: [1, 1].into() },
                         ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 1].into() },
                         ConditionEnum::PieceControlledByEnemy { before_moves: 0, tile: [1, 1].into() },
                     ]),
-                    actions: vec![ActionEnum::SetTile {
-                        target: [1, 1].into(),
-                        piece: None,
-                    }].into_iter().collect(),
-                    move_choices: vec![Some([1, 1].into())].into_iter().collect(),
-                }).with_final(true))
+                    actions: Default::default(),
+                    move_choices: vec![[1, 1].into()].into_iter().collect(),
+                }).with_successors(vec![5]))
                 // En-passant
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
                         // Check enemy pawn has been advanced by two tiles in the previous move
-                        ConditionEnum::MovesPlayedGreaterThanOrEqual(1),
+                        ConditionEnum::MovesPlayedGreaterThanOrEqual(2),
                         // Before previous move:
-                        ConditionEnum::TilePresent { before_moves: 1, tile: [1, 2].into() },
-                        ConditionEnum::TilePresent { before_moves: 1, tile: [1, 1].into() },
-                        ConditionEnum::TilePresent { before_moves: 1, tile: [1, 0].into() },
-                        ConditionEnum::PiecePresent { before_moves: 1, tile: [1, 2].into() },
-                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 1, tile: [1, 1].into() })),
-                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 1, tile: [1, 0].into() })),
-                        ConditionEnum::PieceTypeIs { before_moves: 1, tile: [1, 2].into(), definition_index: PIECE_PAWN },
-                        ConditionEnum::PieceControlledByEnemy { before_moves: 1, tile: [1, 2].into() },
+                        ConditionEnum::TilePresent { before_moves: 2, tile: [1, 2].into() },
+                        ConditionEnum::TilePresent { before_moves: 2, tile: [1, 1].into() },
+                        ConditionEnum::TilePresent { before_moves: 2, tile: [1, 0].into() },
+                        ConditionEnum::PiecePresent { before_moves: 2, tile: [1, 2].into() },
+                        ConditionEnum::not(ConditionEnum::PiecePresent { before_moves: 2, tile: [1, 1].into() }),
+                        ConditionEnum::not(ConditionEnum::PiecePresent { before_moves: 2, tile: [1, 0].into() }),
+                        ConditionEnum::PieceTypeIs { before_moves: 2, tile: [1, 2].into(), definition_index: PIECE_PAWN },
+                        ConditionEnum::PieceControlledByEnemy { before_moves: 2, tile: [1, 2].into() },
                         // After previous move:
                         ConditionEnum::TilePresent { before_moves: 0, tile: [1, 2].into() },
                         ConditionEnum::TilePresent { before_moves: 0, tile: [1, 1].into() },
                         ConditionEnum::TilePresent { before_moves: 0, tile: [1, 0].into() },
-                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 2].into() })),
-                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 1].into() })),
+                        ConditionEnum::not(ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 2].into() }),
+                        ConditionEnum::not(ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 1].into() }),
                         ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 0].into() },
                         ConditionEnum::PieceTypeIs { before_moves: 0, tile: [1, 0].into(), definition_index: PIECE_PAWN },
                         ConditionEnum::PieceControlledByEnemy { before_moves: 0, tile: [1, 0].into() },
@@ -85,7 +86,127 @@ lazy_static! {
                         target: [1, 0].into(),
                         piece: None,
                     }].into_iter().collect(),
-                    move_choices: vec![Some([1, 1].into())].into_iter().collect(),
+                    move_choices: vec![[1, 1].into()].into_iter().collect(),
+                }).with_successors(vec![5]))
+                // Finish move unless on last rank, then promotion is mandatory.
+                .with_state(StateUnvalidated::new(Action::Move {
+                    condition: ConditionEnum::all(vec![]),
+                    actions: Default::default(),
+                    move_choices: vec![[0, 0].into()].into_iter().collect(),
+                }).with_successors(vec![
+                    6, // no promotion
+                    7, // promotion
+                ]))
+                // If not on last rank, end move.
+                .with_state(StateUnvalidated::new(Action::Move {
+                    condition: ConditionEnum::not(ConditionEnum::any(vec![
+                        ConditionEnum::all(vec![
+                            ConditionEnum::PieceControlledBy {
+                                before_moves: 0,
+                                tile: [0, 0].into(),
+                                player: PLAYER_WHITE,
+                            },
+                            ConditionEnum::TileFlagPresent {
+                                before_moves: 0,
+                                tile: [0, 0].into(),
+                                flag: TILE_FLAG_PROMOTION_WHITE,
+                            },
+                        ]),
+                        ConditionEnum::all(vec![
+                            ConditionEnum::PieceControlledBy {
+                                before_moves: 0,
+                                tile: [0, 0].into(),
+                                player: PLAYER_BLACK,
+                            },
+                            ConditionEnum::TileFlagPresent {
+                                before_moves: 0,
+                                tile: [0, 0].into(),
+                                flag: TILE_FLAG_PROMOTION_BLACK,
+                            },
+                        ]),
+                    ])),
+                    actions: Default::default(),
+                    move_choices: vec![[0, 0].into()].into_iter().collect(),
+                }).with_final(true))
+                // If on last rank, require promotion.
+                .with_state(StateUnvalidated::new(Action::Move {
+                    condition: ConditionEnum::any(vec![
+                        ConditionEnum::all(vec![
+                            ConditionEnum::PieceControlledBy {
+                                before_moves: 0,
+                                tile: [0, 0].into(),
+                                player: PLAYER_WHITE,
+                            },
+                            ConditionEnum::TileFlagPresent {
+                                before_moves: 0,
+                                tile: [0, 0].into(),
+                                flag: TILE_FLAG_PROMOTION_WHITE,
+                            },
+                        ]),
+                        ConditionEnum::all(vec![
+                            ConditionEnum::PieceControlledBy {
+                                before_moves: 0,
+                                tile: [0, 0].into(),
+                                player: PLAYER_BLACK,
+                            },
+                            ConditionEnum::TileFlagPresent {
+                                before_moves: 0,
+                                tile: [0, 0].into(),
+                                flag: TILE_FLAG_PROMOTION_BLACK,
+                            },
+                        ]),
+                    ]),
+                    actions: Default::default(),
+                    move_choices: vec![[0, 0].into()].into_iter().collect(),
+                }).with_successors(vec![
+                    8, // rook
+                    9, // knight
+                    10, // bishop
+                    11, // queen
+                ]))
+                // Promotion to rook
+                .with_state(StateUnvalidated::new(Action::Move {
+                    condition: ConditionEnum::all(vec![]),
+                    actions: vec![
+                        ActionEnum::SetTile {
+                            target: [0, 0].into(),
+                            piece: Some(PIECE_ROOK),
+                        },
+                    ].into_iter().collect(),
+                    move_choices: vec![[0, 0].into()].into_iter().collect(),
+                }).with_final(true))
+                // Promotion to knight
+                .with_state(StateUnvalidated::new(Action::Move {
+                    condition: ConditionEnum::all(vec![]),
+                    actions: vec![
+                        ActionEnum::SetTile {
+                            target: [0, 0].into(),
+                            piece: Some(PIECE_KNIGHT),
+                        },
+                    ].into_iter().collect(),
+                    move_choices: vec![[0, 0].into()].into_iter().collect(),
+                }).with_final(true))
+                // Promotion to bishop
+                .with_state(StateUnvalidated::new(Action::Move {
+                    condition: ConditionEnum::all(vec![]),
+                    actions: vec![
+                        ActionEnum::SetTile {
+                            target: [0, 0].into(),
+                            piece: Some(PIECE_BISHOP),
+                        },
+                    ].into_iter().collect(),
+                    move_choices: vec![[0, 0].into()].into_iter().collect(),
+                }).with_final(true))
+                // Promotion to queen
+                .with_state(StateUnvalidated::new(Action::Move {
+                    condition: ConditionEnum::all(vec![]),
+                    actions: vec![
+                        ActionEnum::SetTile {
+                            target: [0, 0].into(),
+                            piece: Some(PIECE_QUEEN),
+                        },
+                    ].into_iter().collect(),
+                    move_choices: vec![[0, 0].into()].into_iter().collect(),
                 }).with_final(true)),
             PieceDefinitionUnvalidated::new("Rook")
                 .with_initial_state(StateUnvalidated::new(Action::Symmetry {
@@ -94,10 +215,10 @@ lazy_static! {
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
                         ConditionEnum::TilePresent { before_moves: 0, tile: [0, 1].into() },
-                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 0, tile: [0, 1].into() })),
+                        ConditionEnum::not(ConditionEnum::PiecePresent { before_moves: 0, tile: [0, 1].into() }),
                     ]),
                     actions: Default::default(),
-                    move_choices: vec![Some([0, 1].into())].into_iter().collect(),
+                    move_choices: vec![[0, 1].into()].into_iter().collect(),
                 }).with_final(true).with_successors(vec![1, 2]))
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
@@ -105,11 +226,8 @@ lazy_static! {
                         ConditionEnum::PiecePresent { before_moves: 0, tile: [0, 1].into() },
                         ConditionEnum::PieceControlledByEnemy { before_moves: 0, tile: [0, 1].into() },
                     ]),
-                    actions: vec![ActionEnum::SetTile {
-                        target: [0, 1].into(),
-                        piece: None,
-                    }].into_iter().collect(),
-                    move_choices: vec![Some([0, 1].into())].into_iter().collect(),
+                    actions: Default::default(),
+                    move_choices: vec![[0, 1].into()].into_iter().collect(),
                 }).with_final(true)),
             PieceDefinitionUnvalidated::new("Knight")
                 .with_initial_state(StateUnvalidated::new(Action::Symmetry {
@@ -127,11 +245,8 @@ lazy_static! {
                         ConditionEnum::TilePresent { before_moves: 0, tile: [2, 1].into() },
                         ConditionEnum::PieceControlledByEnemy { before_moves: 0, tile: [2, 1].into() },
                     ]),
-                    actions: vec![ActionEnum::SetTile {
-                        target: [2, 1].into(),
-                        piece: None,
-                    }].into_iter().collect(),
-                    move_choices: vec![Some([2, 1].into())].into_iter().collect(),
+                    actions: Default::default(),
+                    move_choices: vec![[2, 1].into()].into_iter().collect(),
                 }).with_final(true)),
             PieceDefinitionUnvalidated::new("Bishop")
                 .with_initial_state(StateUnvalidated::new(Action::Symmetry {
@@ -140,10 +255,10 @@ lazy_static! {
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
                         ConditionEnum::TilePresent { before_moves: 0, tile: [1, 1].into() },
-                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 1].into() })),
+                        ConditionEnum::not(ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 1].into() }),
                     ]),
                     actions: Default::default(),
-                    move_choices: vec![Some([1, 1].into())].into_iter().collect(),
+                    move_choices: vec![[1, 1].into()].into_iter().collect(),
                 }).with_final(true).with_successors(vec![1, 2]))
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
@@ -151,11 +266,8 @@ lazy_static! {
                         ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 1].into() },
                         ConditionEnum::PieceControlledByEnemy { before_moves: 0, tile: [1, 1].into() },
                     ]),
-                    actions: vec![ActionEnum::SetTile {
-                        target: [1, 1].into(),
-                        piece: None,
-                    }].into_iter().collect(),
-                    move_choices: vec![Some([1, 1].into())].into_iter().collect(),
+                    actions: Default::default(),
+                    move_choices: vec![[1, 1].into()].into_iter().collect(),
                 }).with_final(true)),
             PieceDefinitionUnvalidated::new("Queen")
                 .with_initial_state(StateUnvalidated::new(Action::Symmetry {
@@ -164,10 +276,10 @@ lazy_static! {
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
                         ConditionEnum::TilePresent { before_moves: 0, tile: [0, 1].into() },
-                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 0, tile: [0, 1].into() })),
+                        ConditionEnum::not(ConditionEnum::PiecePresent { before_moves: 0, tile: [0, 1].into() }),
                     ]),
                     actions: Default::default(),
-                    move_choices: vec![Some([0, 1].into())].into_iter().collect(),
+                    move_choices: vec![[0, 1].into()].into_iter().collect(),
                 }).with_final(true).with_successors(vec![1, 2]))
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
@@ -175,19 +287,16 @@ lazy_static! {
                         ConditionEnum::PiecePresent { before_moves: 0, tile: [0, 1].into() },
                         ConditionEnum::PieceControlledByEnemy { before_moves: 0, tile: [0, 1].into() },
                     ]),
-                    actions: vec![ActionEnum::SetTile {
-                        target: [0, 1].into(),
-                        piece: None,
-                    }].into_iter().collect(),
-                    move_choices: vec![Some([0, 1].into())].into_iter().collect(),
+                    actions: Default::default(),
+                    move_choices: vec![[0, 1].into()].into_iter().collect(),
                 }).with_final(true))
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
                         ConditionEnum::TilePresent { before_moves: 0, tile: [1, 1].into() },
-                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 1].into() })),
+                        ConditionEnum::not(ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 1].into() }),
                     ]),
                     actions: Default::default(),
-                    move_choices: vec![Some([1, 1].into())].into_iter().collect(),
+                    move_choices: vec![[1, 1].into()].into_iter().collect(),
                 }).with_final(true).with_successors(vec![3, 4]))
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
@@ -195,11 +304,8 @@ lazy_static! {
                         ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 1].into() },
                         ConditionEnum::PieceControlledByEnemy { before_moves: 0, tile: [1, 1].into() },
                     ]),
-                    actions: vec![ActionEnum::SetTile {
-                        target: [1, 1].into(),
-                        piece: None,
-                    }].into_iter().collect(),
-                    move_choices: vec![Some([1, 1].into())].into_iter().collect(),
+                    actions: Default::default(),
+                    move_choices: vec![[1, 1].into()].into_iter().collect(),
                 }).with_final(true)),
             PieceDefinitionUnvalidated::new("King")
                 .with_initial_state(StateUnvalidated::new(Action::Symmetry {
@@ -210,22 +316,16 @@ lazy_static! {
                         ConditionEnum::TilePresent { before_moves: 0, tile: [0, 1].into() },
                         ConditionEnum::PieceControlledByEnemy { before_moves: 0, tile: [0, 1].into() },
                     ]),
-                    actions: vec![ActionEnum::SetTile {
-                        target: [0, 1].into(),
-                        piece: None,
-                    }].into_iter().collect(),
-                    move_choices: vec![Some([0, 1].into())].into_iter().collect(),
+                    actions: Default::default(),
+                    move_choices: vec![[0, 1].into()].into_iter().collect(),
                 }).with_final(true))
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
                         ConditionEnum::TilePresent { before_moves: 0, tile: [1, 1].into() },
                         ConditionEnum::PieceControlledByEnemy { before_moves: 0, tile: [1, 1].into() },
                     ]),
-                    actions: vec![ActionEnum::SetTile {
-                        target: [1, 1].into(),
-                        piece: None,
-                    }].into_iter().collect(),
-                    move_choices: vec![Some([1, 1].into())].into_iter().collect(),
+                    actions: Default::default(),
+                    move_choices: vec![[1, 1].into()].into_iter().collect(),
                 }).with_final(true))
                 // Castles (symmetrical)
                 .with_initial_state(StateUnvalidated::new(Action::Symmetry {
@@ -237,8 +337,8 @@ lazy_static! {
                         ConditionEnum::TilePresent { before_moves: 0, tile: [1, 0].into() },
                         ConditionEnum::TilePresent { before_moves: 0, tile: [2, 0].into() },
                         ConditionEnum::TilePresent { before_moves: 0, tile: [3, 0].into() },
-                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 0].into() })),
-                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 0, tile: [2, 0].into() })),
+                        ConditionEnum::not(ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 0].into() }),
+                        ConditionEnum::not(ConditionEnum::PiecePresent { before_moves: 0, tile: [2, 0].into() }),
                         ConditionEnum::PiecePresent { before_moves: 0, tile: [3, 0].into() },
                         ConditionEnum::PieceTypeIs { before_moves: 0, tile: [3, 0].into(), definition_index: PIECE_ROOK },
                         ConditionEnum::PieceControlledByAlly { before_moves: 0, tile: [3, 0].into() },
@@ -255,7 +355,7 @@ lazy_static! {
                             piece: None,
                         },
                     ].into_iter().collect(),
-                    move_choices: vec![Some([2, 0].into())].into_iter().collect(),
+                    move_choices: vec![[2, 0].into()].into_iter().collect(),
                 }).with_final(true))
                 // Queen side castle
                 .with_state(StateUnvalidated::new(Action::Move {
@@ -264,9 +364,9 @@ lazy_static! {
                         ConditionEnum::TilePresent { before_moves: 0, tile: [2, 0].into() },
                         ConditionEnum::TilePresent { before_moves: 0, tile: [3, 0].into() },
                         ConditionEnum::TilePresent { before_moves: 0, tile: [4, 0].into() },
-                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 0].into() })),
-                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 0, tile: [2, 0].into() })),
-                        ConditionEnum::Not(Box::new(ConditionEnum::PiecePresent { before_moves: 0, tile: [3, 0].into() })),
+                        ConditionEnum::not(ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 0].into() }),
+                        ConditionEnum::not(ConditionEnum::PiecePresent { before_moves: 0, tile: [2, 0].into() }),
+                        ConditionEnum::not(ConditionEnum::PiecePresent { before_moves: 0, tile: [3, 0].into() }),
                         ConditionEnum::PiecePresent { before_moves: 0, tile: [4, 0].into() },
                         ConditionEnum::PieceTypeIs { before_moves: 0, tile: [4, 0].into(), definition_index: PIECE_ROOK },
                         ConditionEnum::PieceControlledByAlly { before_moves: 0, tile: [4, 0].into() },
@@ -283,26 +383,24 @@ lazy_static! {
                             piece: None,
                         },
                     ].into_iter().collect(),
-                    move_choices: vec![Some([2, 0].into())].into_iter().collect(),
+                    move_choices: vec![[2, 0].into()].into_iter().collect(),
                 }).with_final(true))
         ];
 
         PieceSet::from(definitions).unwrap()
     };
 
-    static ref GAME_BOARD: Board<SquareBoardGeometry> = Board {
-        tiles: {
-            let mut tiles = BoardTiles::empty();
+    static ref GAME_BOARD: Board<SquareBoardGeometry> = Board::new({
+        let mut tiles = BoardTiles::empty();
 
-            for y in 0..8 {
-                for x in 0..8 {
-                    tiles.set([x, y].into(), true);
-                }
+        for y in 0..8 {
+            for x in 0..8 {
+                tiles.set([x, y].into(), true);
             }
+        }
 
-            tiles
-        },
-    };
+        tiles
+    });
 
     static ref GAME_STATE_INITIAL: GameState<SquareBoardGeometry> = {
         static P: usize = PIECE_PAWN;
@@ -315,18 +413,22 @@ lazy_static! {
             [P, P, P, P, P, P, P, P],
             [R, N, B, Q, K, B, N, R],
         ];
-
-        let mut game_state = GameState::<SquareBoardGeometry>::default();
-        let sides: [(usize, Isometry<SquareBoardGeometry>); 2] = [
-            (0, Isometry::default()),
-            (1, Isometry::from(SquareBoardGeometry::get_reflective_symmetries()[0].clone() * SquareBoardGeometry::get_rotations()[2].clone()) * Isometry::<SquareBoardGeometry>::translation([0, 7].into())),
+        static PROMOTE: [[bool; 8]; 2] = [
+            [false, false, false, false, false, false, false, false],
+            [ true,  true,  true,  true,  true,  true,  true,  true],
         ];
 
-        for (player, isometry) in &sides {
-            for (y_inv, row) in WHITE_PIECES.iter().enumerate() {
+        let mut game_state = GameState::<SquareBoardGeometry>::default();
+        let sides: [(usize, u32, Isometry<SquareBoardGeometry>); 2] = [
+            (PLAYER_WHITE, TILE_FLAG_PROMOTION_BLACK, Isometry::default()),
+            (PLAYER_BLACK, TILE_FLAG_PROMOTION_WHITE, Isometry::from(SquareBoardGeometry::get_reflective_symmetries()[0].clone() * SquareBoardGeometry::get_rotations()[2].clone()) * Isometry::<SquareBoardGeometry>::translation([0, 7].into())),
+        ];
+
+        for (player, tile_flag_promotion, isometry) in &sides {
+            for (y_inv, (pieces_row, promote_row)) in WHITE_PIECES.iter().zip(PROMOTE.iter()).enumerate() {
                 let y = 1 - y_inv;
 
-                for (x, piece) in row.iter().enumerate() {
+                for (x, (piece, promote)) in pieces_row.iter().zip(promote_row.iter()).enumerate() {
                     let mut coords: <SquareBoardGeometry as BoardGeometryExt>::Tile = [x as i32, y as i32].into();
                     coords = isometry.apply(coords);
                     let mut tile = game_state.tile_mut(&GAME_BOARD, coords).unwrap();
@@ -336,8 +438,11 @@ lazy_static! {
                         definition: *piece,
                         owner: *player,
                         transformation: isometry.axis_permutation.clone(),
-                        __marker: Default::default(),
                     }));
+
+                    if *promote {
+                        tile.set_flag(*tile_flag_promotion, true);
+                    }
                 }
             }
         }
@@ -350,8 +455,8 @@ lazy_static! {
         piece_set: PIECE_SET.clone(),
         players: NonZeroUsize::new(2).unwrap(),
         victory_conditions: Box::new(
-            PredictiveVictoryConditions::new(
-                RoyalVictoryConditions::new(RoyalVictoryType::Absolute, &*GAME_STATE_INITIAL)
+            PredictiveVictoryCondition::new(
+                RoyalVictoryCondition::new(RoyalVictoryType::Absolute, &*GAME_STATE_INITIAL)
                     .with_min_piece_count(PLAYER_WHITE, PIECE_KING, 1)
                     .with_min_piece_count(PLAYER_BLACK, PIECE_KING, 1)
             )

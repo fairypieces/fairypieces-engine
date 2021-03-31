@@ -12,9 +12,18 @@ use smallvec::{SmallVec, smallvec};
 use crate::math::*;
 use crate::{Game, GameRules, GameState};
 
+/// A board is a grid of tiles (cells) on which the game is played.
 #[derive(Debug, Clone)]
 pub struct Board<G: BoardGeometry> {
     pub(crate) tiles: BoardTiles<G>,
+}
+
+impl<G: BoardGeometry> Board<G> {
+    pub fn new(tiles: BoardTiles<G>) -> Self {
+        Self {
+            tiles
+        }
+    }
 }
 
 impl<G: BoardGeometry> Board<G> {
@@ -23,6 +32,8 @@ impl<G: BoardGeometry> Board<G> {
     }
 }
 
+/// `BoardTiles` determines which tiles of the `BoardGeometry` actually make up
+/// the playable board.
 #[derive(Debug, Clone)]
 pub struct BoardTiles<G: BoardGeometry> {
     invert_set: bool,
@@ -30,6 +41,7 @@ pub struct BoardTiles<G: BoardGeometry> {
 }
 
 impl<G: BoardGeometry> BoardTiles<G> {
+    /// Creates `BoardTiles` with no tiles.
     pub fn empty() -> Self {
         Self {
             invert_set: false,
@@ -37,6 +49,7 @@ impl<G: BoardGeometry> BoardTiles<G> {
         }
     }
 
+    /// Creates `BoardTiles` with an infinite number of tiles (no tiles missing).
     pub fn infinite() -> Self {
         Self {
             invert_set: true,
@@ -44,11 +57,13 @@ impl<G: BoardGeometry> BoardTiles<G> {
         }
     }
 
+    /// Builder function to add or remove a tile.
     pub fn with(mut self, tile: <G as BoardGeometryExt>::Tile, present: bool) -> Self {
         self.set(tile, present);
         self
     }
 
+    /// Add or remove a tile.
     pub fn set(&mut self, tile: <G as BoardGeometryExt>::Tile, present: bool) {
         if self.invert_set ^ present {
             self.tile_set.insert(tile);
@@ -80,14 +95,13 @@ pub enum BoardGeometryEnum {
 pub trait CoordinateDimensions = IVecLength + ArrayLength<(bool, u8)>;
 pub trait TileTypes = Unsigned;
 
+/// Defines the shape of the board and its properties, such as the coordinate system and useful
+/// transformations.
 pub trait BoardGeometry: Clone + Copy + Default + PartialEq + Eq + PartialOrd + Ord + Hash + Debug {
-
     /// The number of integer coordinates used to describe a tile.
-    // const COORDINATE_DIMENSIONS: usize;
     type CoordinateDimensions: CoordinateDimensions + Debug;
 
     /// The number of types a tile can be.
-    // const TILE_TYPES: usize;
     type TileTypes: TileTypes + Debug;
 
     /// Returns `true`, if the coordinates describe a valid tile; `false` otherwise.
@@ -121,9 +135,7 @@ pub struct TriangularBoardGeometry;
 
 impl BoardGeometry for TriangularBoardGeometry {
     type CoordinateDimensions = typenum::U3;
-    type TileTypes = typenum::U2;
-    // const COORDINATE_DIMENSIONS: usize = 3;
-    // const TILE_TYPES: usize = 2; // triangles /\ and \/
+    type TileTypes = typenum::U2; // triangles /\ and \/
 
     fn is_tile_valid(tile: IVec3) -> bool {
         let sum: i32 = tile.into_iter().sum();
@@ -208,8 +220,6 @@ pub struct SquareBoardGeometry;
 impl BoardGeometry for SquareBoardGeometry {
     type CoordinateDimensions = typenum::U2;
     type TileTypes = typenum::U1;
-    // const COORDINATE_DIMENSIONS: usize = 2;
-    // const TILE_TYPES: usize = 1;
 
     fn is_tile_valid(_tile: IVec2) -> bool {
         true
@@ -444,8 +454,6 @@ pub struct HexagonalBoardGeometry;
 impl BoardGeometry for HexagonalBoardGeometry {
     type CoordinateDimensions = typenum::U3;
     type TileTypes = typenum::U1;
-    // const COORDINATE_DIMENSIONS: usize = 3;
-    // const TILE_TYPES: usize = 1;
 
     fn is_tile_valid(tile: IVec3) -> bool {
         let sum: i32 = tile.into_iter().sum();
