@@ -19,7 +19,7 @@ pub struct MoveLog<G: BoardGeometry> {
     pub(crate) current_state: GameState<G>,
     /// A list of normalized deltas.
     /// Applying all deltas in the given order to `initial_state` produces `current_state`.
-    pub(crate) moves: Vec<ReversibleGameStateDelta<G>>,
+    pub(crate) moves: im::Vector<ReversibleGameStateDelta<G>>,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -42,7 +42,7 @@ impl<G: BoardGeometry> MoveLog<G> {
     pub fn append(&mut self, delta: ReversibleGameStateDelta<G>) {
         let previous_game_state = self.current_state.clone();
 
-        self.moves.push(delta.clone());
+        self.moves.push_back(delta.clone());
         replace_with_or_default(&mut self.current_state, |current_state| current_state.apply(delta.forward.clone()));
 
         // Ensure all appended moves are reversible. Ensured using induction.
@@ -68,8 +68,8 @@ impl<G: BoardGeometry> MoveLog<G> {
         &self.current_state
     }
 
-    pub fn moves(&self) -> &[ReversibleGameStateDelta<G>] {
-        &self.moves
+    pub fn moves(&self) -> impl Iterator<Item=&ReversibleGameStateDelta<G>> {
+        self.moves.iter()
     }
 }
 
@@ -243,7 +243,7 @@ impl<G: BoardGeometry> Game<G> {
         }
 
         if before_moves > 0 {
-            let moves_played_since = &self.move_log.moves[(self.move_log.moves.len() - before_moves)..];
+            let moves_played_since = self.move_log.moves.iter().rev().take(before_moves);
 
             for mv in moves_played_since {
                 if let Some(piece) = mv.backward.affected_pieces.get(&tile) {
@@ -266,7 +266,7 @@ impl<G: BoardGeometry> Game<G> {
         }
 
         if before_moves > 0 {
-            let moves_played_since = &self.move_log.moves[(self.move_log.moves.len() - before_moves)..];
+            let moves_played_since = self.move_log.moves.iter().rev().take(before_moves);
 
             for mv in moves_played_since {
                 if let Some(affected_flags) = mv.backward.affected_flags.get(&tile) {
