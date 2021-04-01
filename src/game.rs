@@ -192,7 +192,7 @@ impl<G: BoardGeometry> Game<G> {
 
     /// See [`Game::append_delta_unchecked_without_evaluation`].
     fn normalize_and_append_delta_unchecked_without_evaluation(&mut self, delta: GameStateDelta<G>) {
-        let normalized = delta.normalize(&self.move_log.current_state);
+        let normalized = delta.normalize(&self.move_log.current_state, self.rules().board());
 
         self.append_delta_unchecked_without_evaluation(normalized)
     }
@@ -201,7 +201,7 @@ impl<G: BoardGeometry> Game<G> {
     /// Otherwise, results in an `Err(_)`.
     #[must_use = "The move may not be available."]
     pub fn normalize_and_append_delta(&mut self, delta: GameStateDelta<G>) -> Result<(), ()> {
-        let normalized = delta.normalize(&self.move_log.current_state);
+        let normalized = delta.normalize(&self.move_log.current_state, self.rules().board());
 
         self.append_delta(normalized)
     }
@@ -455,6 +455,7 @@ impl<G: BoardGeometry> Game<G> {
                 for (tile, _, delta) in &moves {
                     let mv = Move::from(
                         &self.move_log.current_state,
+                        self.rules().board(),
                         delta.clone(),
                         *tile,
                     );
@@ -909,11 +910,12 @@ pub struct Move<G: BoardGeometry> {
 impl<G: BoardGeometry> Move<G> {
     pub fn from(
         original_state: &GameState<G>,
+        board: &Board<G>,
         delta: GameStateDelta<G>,
         final_tile: <G as BoardGeometryExt>::Tile,
     ) -> Self {
         Self {
-            delta: delta.normalize(original_state),
+            delta: delta.normalize(original_state, board),
             final_tile,
         }
     }
@@ -999,11 +1001,69 @@ impl<G: BoardGeometry> GameStateDelta<G> {
     }
 
     /// Removes ineffective actions.
-    pub fn normalize(self, state: &GameState<G>) -> ReversibleGameStateDelta<G> {
-        ReversibleGameStateDelta {
-            forward: &state.clone().apply(self.clone()) - state,
-            backward: state - &state.clone().apply(self),
-        }
+    pub fn normalize(self, state: &GameState<G>, board: &Board<G>) -> ReversibleGameStateDelta<G> {
+        #[cfg(debug_assertions)]
+        let self_clone = self.clone();
+
+        let mut result = ReversibleGameStateDelta {
+            forward: self,
+            backward: GameStateDelta::with_next_player(state.current_player_index()),
+        };
+
+        // Keep altered pieces only.
+        //
+        // Note: Using `drain` on a `BTreeMap` is only efficient if the number of removed elements is
+        // relatively low. In other cases, it is best to create a new tree from an iterator of
+        // key-value pairs.
+        result.forward.affected_pieces.retain(|tile, forward_piece| {
+            if let Some(current_tile) = state.tile(board, *tile) {
+                current_tile.get_piece() != forward_piece.as_ref()
+            } else {
+                false
+            }
+        });
+
+        result.backward.affected_pieces = result.forward.affected_pieces.keys().map(|tile| {
+            // Unwrap Safety: Only pieces of existing tiles were retained in `forward`.
+            let backward_tile = state.tile(board, *tile).unwrap();
+            let backward_piece = backward_tile.get_piece().cloned();
+
+            (*tile, backward_piece)
+        }).collect();
+
+        // Keep altered flags only.
+        result.forward.affected_flags.retain(|tile, forward_flags| {
+            if let Some(current_tile) = state.tile(board, *tile) {
+                if let Some(current_flags) = current_tile.get_flags() {
+                    forward_flags.retain(|flag, value| {
+                        current_flags.contains(*flag) != *value
+                    });
+
+                    !forward_flags.is_empty()
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        });
+
+        result.backward.affected_flags = result.forward.affected_flags.clone();
+
+        result.backward.affected_flags.values_mut().for_each(|backward_flags| {
+            for value in backward_flags.values_mut() {
+                *value ^= true;
+            }
+        });
+
+        // In debug mode, verify the validity of created `ReversibleGameStateDelta`.
+        #[cfg(debug_assertions)]
+        debug_assert_eq!(result, ReversibleGameStateDelta {
+            forward: &state.clone().apply(self_clone.clone()) - state,
+            backward: state - &state.clone().apply(self_clone),
+        });
+
+        result
     }
 
     pub fn apply_to(self, mut state: GameState<G>) -> GameState<G> {

@@ -328,6 +328,11 @@ lazy_static! {
                     move_choices: vec![[1, 1].into()].into_iter().collect(),
                 }).with_final(true))
                 // Castles (symmetrical)
+                //
+                // FIXME: Castling may only be performed if:
+                // * The king is not currently in check.
+                // * The king does not pass through a square that is attacked by an enemy piece.
+                // These requirements are currently not enforced.
                 .with_initial_state(StateUnvalidated::new(Action::Symmetry {
                     symmetries: vec![Default::default(), SquareBoardGeometry::get_reflective_symmetries()[0].clone()].into_iter().collect(),
                 }).with_successors(vec![4, 5]))

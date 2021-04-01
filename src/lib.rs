@@ -3,6 +3,7 @@
 // #![feature(const_evaluatable_checked)]
 // #![feature(const_fn)]
 // #![feature(inline_const)]
+#![feature(btree_retain)]
 #![feature(trait_alias)]
 #![feature(format_args_capture)]
 #![feature(associated_type_bounds)]
