@@ -1,5 +1,4 @@
 use std::fmt::Debug;
-use std::collections::HashSet;
 use std::marker::PhantomData;
 use std::ops::{Mul, Neg};
 use std::hash::Hash;
@@ -9,6 +8,7 @@ use generic_array::{GenericArray, ArrayLength, arr};
 use generic_array::typenum::{self, Unsigned};
 use lazy_static::lazy_static;
 use smallvec::{SmallVec, smallvec};
+use fxhash::FxHashSet;
 use crate::math::*;
 use crate::{Game, GameRules, GameState};
 
@@ -37,7 +37,7 @@ impl<G: BoardGeometry> Board<G> {
 #[derive(Debug, Clone)]
 pub struct BoardTiles<G: BoardGeometry> {
     invert_set: bool,
-    tile_set: HashSet<<G as BoardGeometryExt>::Tile>,
+    tile_set: FxHashSet<<G as BoardGeometryExt>::Tile>,
 }
 
 impl<G: BoardGeometry> BoardTiles<G> {

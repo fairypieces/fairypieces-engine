@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::ops::Sub;
 use std::num::NonZeroUsize;
 use std::collections::{HashMap, VecDeque, BTreeSet, BTreeMap, HashSet, hash_map::Entry};
+use fxhash::{FxHashMap, FxHashSet};
 use dyn_clone::DynClone;
 use replace_with::replace_with_or_default;
 use hibitset::BitSet;
@@ -69,9 +70,9 @@ impl<G: BoardGeometry> MoveLog<G> {
 
 #[derive(Default, Clone, PartialEq, Eq, Debug)]
 pub struct AvailableMoves<G: BoardGeometry> {
-    pub(crate) moves_from: HashMap<<G as BoardGeometryExt>::Tile, HashSet<Move<G>>>,
-    pub(crate) moves: HashSet<Move<G>>,
-    pub(crate) deltas: HashSet<ReversibleGameStateDelta<G>>,
+    pub(crate) moves_from: FxHashMap<<G as BoardGeometryExt>::Tile, FxHashSet<Move<G>>>,
+    pub(crate) moves: FxHashSet<Move<G>>,
+    pub(crate) deltas: FxHashSet<ReversibleGameStateDelta<G>>,
 }
 
 impl<G: BoardGeometry> AvailableMoves<G> {
@@ -312,7 +313,7 @@ impl<G: BoardGeometry> Game<G> {
     /// Executes the piece definition's state machine to generate moves from the piece on the given
     /// `tile`.
     /// The state machine is executed using breadth-first search.
-    fn evaluate_available_moves_from_tile(&self, tile: <G as BoardGeometryExt>::Tile) -> Result<HashSet<Move<G>>, ()> {
+    fn evaluate_available_moves_from_tile(&self, tile: <G as BoardGeometryExt>::Tile) -> Result<FxHashSet<Move<G>>, ()> {
         /// An item within the BFS queue.
         #[derive(Clone, Hash, Eq, PartialEq)]
         struct QueueItem<G2: BoardGeometry> {
@@ -335,7 +336,7 @@ impl<G: BoardGeometry> Game<G> {
             // If the currently playing player does not own the piece on this tile, it cannot be
             // moved during this turn.
             if current_player != piece.owner {
-                return Ok(HashSet::new());
+                return Ok(HashSet::default());
             }
 
             piece.get_definition(&self.rules.piece_set)
@@ -472,7 +473,7 @@ impl<G: BoardGeometry> Game<G> {
         }
 
         // Retain only valid moves, according to the game's `VictoryCondition`.
-        let valid_moves: HashSet<_> = potential_moves.into_iter()
+        let valid_moves: FxHashSet<_> = potential_moves.into_iter()
             .filter(|mv| {
                 self.rules().victory_conditions.is_move_valid(self, mv)
             })
@@ -619,9 +620,9 @@ enum Quantifier {
 #[derive(Clone, Debug)]
 pub struct RoyalVictoryCondition {
     /// (Player, Piece Definition) -> Initial Count
-    initial_piece_count_per_player: HashMap<(usize, usize), usize>,
+    initial_piece_count_per_player: FxHashMap<(usize, usize), usize>,
     /// (Player, Piece Definition) -> Min Count
-    min_piece_count_per_player: HashMap<(usize, usize), usize>,
+    min_piece_count_per_player: FxHashMap<(usize, usize), usize>,
     loss_when_insufficient_count_by: Quantifier,
 }
 
@@ -629,7 +630,7 @@ impl RoyalVictoryCondition {
     pub fn new<G: BoardGeometry>(ty: RoyalVictoryType, initial_state: &GameState<G>) -> Self {
         let initial_piece_count_per_player = initial_state.pieces.values()
             .map(|piece| (piece.owner(), piece.definition_index()))
-            .fold(HashMap::new(), |mut acc, key| {
+            .fold(HashMap::default(), |mut acc, key| {
                 match acc.entry(key) {
                     Entry::Vacant(entry) => {
                         entry.insert(1);
@@ -680,7 +681,7 @@ impl<G: BoardGeometry> VictoryCondition<G> for RoyalVictoryCondition {
             .flat_map(|definition_index| {
                 (0..game.rules().players().get()).into_iter()
                     .map(move |player_index| ((player_index, definition_index), 0))
-            }).collect::<HashMap<(usize, usize), usize>>();
+            }).collect::<FxHashMap<(usize, usize), usize>>();
         let piece_counts_per_player = state.pieces.values()
             .map(|piece| (piece.owner(), piece.definition_index()))
             .fold(piece_counts_per_player, |mut acc, key| {
@@ -694,7 +695,7 @@ impl<G: BoardGeometry> VictoryCondition<G> for RoyalVictoryCondition {
         };
         let initial_player_evaluations = (0..rules.players().get()).into_iter()
             .map(|player| (player, initial_player_evaluation))
-            .collect::<HashMap<usize, bool>>();
+            .collect::<FxHashMap<usize, bool>>();
 
         let players_alive: Vec<usize> = self.min_piece_count_per_player.iter()
             .map(move |(&(player, piece), min_count)| {
@@ -772,11 +773,11 @@ impl<G: BoardGeometry> GameRules<G> {
 
 }
 
-pub type Pieces<G> = HashMap<<G as BoardGeometryExt>::Tile, Piece<G>>;
+pub type Pieces<G> = FxHashMap<<G as BoardGeometryExt>::Tile, Piece<G>>;
 
 #[derive(Clone, Default, Debug, PartialEq, Eq)]
 pub struct Flags<G: BoardGeometry> {
-    map: HashMap<<G as BoardGeometryExt>::Tile, BitSet>,
+    map: FxHashMap<<G as BoardGeometryExt>::Tile, BitSet>,
 }
 
 impl<G: BoardGeometry> Flags<G> {
@@ -863,7 +864,7 @@ impl<'a, G: BoardGeometry> Sub for &'a GameState<G> {
             }
         }
 
-        let tiles_with_flags: HashSet<_> = self.flags.map.keys().chain(rhs.flags.map.keys()).copied().collect();
+        let tiles_with_flags: FxHashSet<_> = self.flags.map.keys().chain(rhs.flags.map.keys()).copied().collect();
 
         for tile in tiles_with_flags {
             match (self.flags.get_flags(tile), rhs.flags.get_flags(tile)) {
