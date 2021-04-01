@@ -15,7 +15,6 @@ use crate::*;
 /// The list of all moves played during a [`Game`].
 #[derive(Clone, Debug)]
 pub struct MoveLog<G: BoardGeometry> {
-    pub(crate) initial_state: GameState<G>,
     pub(crate) current_state: GameState<G>,
     /// A list of normalized deltas.
     /// Applying all deltas in the given order to `initial_state` produces `current_state`.
@@ -33,8 +32,7 @@ pub enum PastTileError {
 impl<G: BoardGeometry> MoveLog<G> {
     pub fn new(initial_state: GameState<G>) -> Self {
         Self {
-            current_state: initial_state.clone(),
-            initial_state,
+            current_state: initial_state,
             moves: Default::default(),
         }
     }
@@ -59,10 +57,6 @@ impl<G: BoardGeometry> MoveLog<G> {
     //     // Ensure all appended moves are reversible
     //     debug_assert!(self.initial_state == self.moves.iter().rev().fold(self.current_state.clone(), |state, mv| state.apply(mv.backward.clone())));
     // }
-
-    pub fn initial_state(&self) -> &GameState<G> {
-        &self.initial_state
-    }
 
     pub fn current_state(&self) -> &GameState<G> {
         &self.current_state
