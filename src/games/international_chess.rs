@@ -434,7 +434,7 @@ lazy_static! {
                 let y = 1 - y_inv;
 
                 for (x, (piece, promote)) in pieces_row.iter().zip(promote_row.iter()).enumerate() {
-                    let mut coords: <SquareBoardGeometry as BoardGeometryExt>::Tile = [x as i32, y as i32].into();
+                    let mut coords: <SquareBoardGeometry as BoardGeometryExt>::Tile = [x as IVecComponent, y as IVecComponent].into();
                     coords = isometry.apply(coords);
                     let mut tile = game_state.tile_mut(&GAME_BOARD, coords).unwrap();
 
@@ -475,11 +475,11 @@ lazy_static! {
 }
 
 pub mod tiles {
-    use crate::math::IVec2;
+    use crate::math::{IVec2, IVecComponent};
 
-    const fn ivec2(x: i32, y: i32) -> IVec2 {
+    const fn ivec2(x: IVecComponent, y: IVecComponent) -> IVec2 {
         unsafe {
-            std::mem::transmute::<[i32; 2], IVec2>([x, y])
+            std::mem::transmute::<[IVecComponent; 2], IVec2>([x, y])
         }
     }
 

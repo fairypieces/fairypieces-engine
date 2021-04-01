@@ -138,7 +138,7 @@ impl BoardGeometry for TriangularBoardGeometry {
     type TileTypes = typenum::U2; // triangles /\ and \/
 
     fn is_tile_valid(tile: IVec3) -> bool {
-        let sum: i32 = tile.into_iter().sum();
+        let sum: IVecComponent = tile.into_iter().sum();
 
         sum == 0 || sum == 1
     }
@@ -287,8 +287,8 @@ impl BoardGeometry for SquareBoardGeometry {
         assert!(game_rules.players.get() <= 2, "Printing a game with more than 2 players is currently not supported.");
 
         let mut result = String::new();
-        let mut min: IVec2 = [i32::MAX; 2].into();
-        let mut max: IVec2 = [i32::MIN; 2].into();
+        let mut min: IVec2 = [IVecComponent::MAX; 2].into();
+        let mut max: IVec2 = [IVecComponent::MIN; 2].into();
 
         if game_rules.board.tiles.invert_set {
             const BORDER: usize = 1;
@@ -304,8 +304,8 @@ impl BoardGeometry for SquareBoardGeometry {
                 }
             }
 
-            min -= IVec2::from([BORDER as i32; 2]);
-            max += IVec2::from([BORDER as i32; 2]);
+            min -= IVec2::from([BORDER as IVecComponent; 2]);
+            max += IVec2::from([BORDER as IVecComponent; 2]);
 
             for tile in &game_rules.board.tiles.tile_set {
                 for (c_tile, c_min, c_max) in itertools::multizip((tile, &mut min, &mut max)) {
@@ -456,7 +456,7 @@ impl BoardGeometry for HexagonalBoardGeometry {
     type TileTypes = typenum::U1;
 
     fn is_tile_valid(tile: IVec3) -> bool {
-        let sum: i32 = tile.into_iter().sum();
+        let sum: IVecComponent = tile.into_iter().sum();
 
         sum == 0
     }

@@ -4,11 +4,12 @@ use std::fmt::{Display, Debug};
 use generic_array::typenum;
 use generic_array::{GenericArray, ArrayLength};
 
-pub trait IVecLength = ArrayLength<i32, ArrayType: Copy> + Hash + PartialEq + Eq + PartialOrd + Ord;
+pub type IVecComponent = i16;
+pub trait IVecLength = ArrayLength<IVecComponent, ArrayType: Copy> + Hash + PartialEq + Eq + PartialOrd + Ord;
 
 #[derive(Copy, Clone, Debug, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
-pub struct IVec<D: IVecLength>(pub GenericArray<i32, D>);
+pub struct IVec<D: IVecLength>(pub GenericArray<IVecComponent, D>);
 
 impl<D: IVecLength> Display for IVec<D> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -17,8 +18,8 @@ impl<D: IVecLength> Display for IVec<D> {
 }
 
 impl<'a, D: IVecLength> IntoIterator for &'a IVec<D> {
-    type Item = &'a i32;
-    type IntoIter = <&'a GenericArray<i32, D> as IntoIterator>::IntoIter;
+    type Item = &'a IVecComponent;
+    type IntoIter = <&'a GenericArray<IVecComponent, D> as IntoIterator>::IntoIter;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.iter()
@@ -26,8 +27,8 @@ impl<'a, D: IVecLength> IntoIterator for &'a IVec<D> {
 }
 
 impl<'a, D: IVecLength> IntoIterator for &'a mut IVec<D> {
-    type Item = &'a mut i32;
-    type IntoIter = <&'a mut GenericArray<i32, D> as IntoIterator>::IntoIter;
+    type Item = &'a mut IVecComponent;
+    type IntoIter = <&'a mut GenericArray<IVecComponent, D> as IntoIterator>::IntoIter;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.iter_mut()
@@ -35,24 +36,24 @@ impl<'a, D: IVecLength> IntoIterator for &'a mut IVec<D> {
 }
 
 impl<D: IVecLength> IntoIterator for IVec<D> {
-    type Item = i32;
-    type IntoIter = <GenericArray<i32, D> as IntoIterator>::IntoIter;
+    type Item = IVecComponent;
+    type IntoIter = <GenericArray<IVecComponent, D> as IntoIterator>::IntoIter;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()
     }
 }
 
-impl<D: IVecLength> AddAssign<i32> for IVec<D> {
-    fn add_assign(&mut self, rhs: i32) {
+impl<D: IVecLength> AddAssign<IVecComponent> for IVec<D> {
+    fn add_assign(&mut self, rhs: IVecComponent) {
         self.iter_mut().for_each(|c| c.add_assign(rhs));
     }
 }
 
-impl<D: IVecLength> Add<i32> for IVec<D> {
+impl<D: IVecLength> Add<IVecComponent> for IVec<D> {
     type Output = Self;
 
-    fn add(mut self, rhs: i32) -> Self::Output {
+    fn add(mut self, rhs: IVecComponent) -> Self::Output {
         self.add_assign(rhs);
         self
     }
@@ -75,16 +76,16 @@ impl<D: IVecLength> Add<Self> for IVec<D> {
     }
 }
 
-impl<D: IVecLength> SubAssign<i32> for IVec<D> {
-    fn sub_assign(&mut self, rhs: i32) {
+impl<D: IVecLength> SubAssign<IVecComponent> for IVec<D> {
+    fn sub_assign(&mut self, rhs: IVecComponent) {
         self.iter_mut().for_each(|c| c.sub_assign(rhs));
     }
 }
 
-impl<D: IVecLength> Sub<i32> for IVec<D> {
+impl<D: IVecLength> Sub<IVecComponent> for IVec<D> {
     type Output = Self;
 
-    fn sub(mut self, rhs: i32) -> Self::Output {
+    fn sub(mut self, rhs: IVecComponent) -> Self::Output {
         self.sub_assign(rhs);
         self
     }
@@ -107,16 +108,16 @@ impl<D: IVecLength> Sub<Self> for IVec<D> {
     }
 }
 
-impl<D: IVecLength> MulAssign<i32> for IVec<D> {
-    fn mul_assign(&mut self, rhs: i32) {
+impl<D: IVecLength> MulAssign<IVecComponent> for IVec<D> {
+    fn mul_assign(&mut self, rhs: IVecComponent) {
         self.iter_mut().for_each(|c| c.mul_assign(rhs));
     }
 }
 
-impl<D: IVecLength> Mul<i32> for IVec<D> {
+impl<D: IVecLength> Mul<IVecComponent> for IVec<D> {
     type Output = Self;
 
-    fn mul(mut self, rhs: i32) -> Self::Output {
+    fn mul(mut self, rhs: IVecComponent) -> Self::Output {
         self.mul_assign(rhs);
         self
     }
@@ -139,16 +140,16 @@ impl<D: IVecLength> Mul<Self> for IVec<D> {
     }
 }
 
-impl<D: IVecLength> DivAssign<i32> for IVec<D> {
-    fn div_assign(&mut self, rhs: i32) {
+impl<D: IVecLength> DivAssign<IVecComponent> for IVec<D> {
+    fn div_assign(&mut self, rhs: IVecComponent) {
         self.iter_mut().for_each(|c| c.div_assign(rhs));
     }
 }
 
-impl<D: IVecLength> Div<i32> for IVec<D> {
+impl<D: IVecLength> Div<IVecComponent> for IVec<D> {
     type Output = Self;
 
-    fn div(mut self, rhs: i32) -> Self::Output {
+    fn div(mut self, rhs: IVecComponent) -> Self::Output {
         self.div_assign(rhs);
         self
     }
@@ -171,16 +172,16 @@ impl<D: IVecLength> Div<Self> for IVec<D> {
     }
 }
 
-impl<D: IVecLength> RemAssign<i32> for IVec<D> {
-    fn rem_assign(&mut self, rhs: i32) {
+impl<D: IVecLength> RemAssign<IVecComponent> for IVec<D> {
+    fn rem_assign(&mut self, rhs: IVecComponent) {
         self.iter_mut().for_each(|c| c.rem_assign(rhs));
     }
 }
 
-impl<D: IVecLength> Rem<i32> for IVec<D> {
+impl<D: IVecLength> Rem<IVecComponent> for IVec<D> {
     type Output = Self;
 
-    fn rem(mut self, rhs: i32) -> Self::Output {
+    fn rem(mut self, rhs: IVecComponent) -> Self::Output {
         self.rem_assign(rhs);
         self
     }
@@ -213,7 +214,7 @@ impl<D: IVecLength> Neg for IVec<D> {
 }
 
 impl<D: IVecLength> Deref for IVec<D> {
-    type Target = [i32];
+    type Target = [IVecComponent];
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -226,7 +227,7 @@ impl<D: IVecLength> DerefMut for IVec<D> {
     }
 }
 
-impl<D: IVecLength, T: Into<GenericArray<i32, D>>> From<T> for IVec<D> {
+impl<D: IVecLength, T: Into<GenericArray<IVecComponent, D>>> From<T> for IVec<D> {
     fn from(from: T) -> Self {
         Self(from.into())
     }
