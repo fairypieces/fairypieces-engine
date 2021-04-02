@@ -1,9 +1,13 @@
 use std::collections::BTreeSet;
 use crate::Game;
+use crate::game::PlayerIndex;
 use crate::math::*;
 use crate::board::*;
 
 // TODO: Improve error types for validation.
+
+pub type PieceDefinitionIndex = u16;
+pub type TileFlagIndex = u32;
 
 /// A set of piece definitions whose movesets may refer to each other.
 #[derive(Clone, Debug)]
@@ -33,15 +37,13 @@ impl<G: BoardGeometry> PieceSet<G> {
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Piece<G: BoardGeometry> {
     /// The index of the piece definition.
-    pub(crate) definition: usize,
+    pub(crate) definition: u16,
     /// The piece's rotation and/or reflection.
     pub(crate) transformation: AxisPermutation<G>,
     /// The player who owns this piece.
-    pub(crate) owner: usize,
-    // TODO: Replace by tracking the history of moves (their indices to the `MoveLog`)
-    // that affected this piece.
-    /// `true` if the piece has not been moved since the beginning of the game, `false` otherwise.
-    pub(crate) initial: bool,
+    pub(crate) owner: u8,
+    /// Indices of moves in which this move was affected.
+    pub(crate) affecting_moves: im::Vector<u16>,
 }
 
 impl<G: BoardGeometry> Piece<G> {
@@ -49,39 +51,62 @@ impl<G: BoardGeometry> Piece<G> {
     // TODO: Possibly create an `UnvalidatedPiece` type to make it type safe.
     pub(crate) fn check_validity(&self, definitions: &[PieceDefinitionUnvalidated<G>]) -> Result<(), ()> {
         // TODO validate owner (team)?
-        if self.definition >= definitions.len() {
+        if self.definition as usize >= definitions.len() {
             return Err(());
         }
 
         Ok(())
     }
 
-    pub fn definition_index(&self) -> usize {
+    pub fn affecting_moves(&self) -> impl Iterator<Item=u16> + DoubleEndedIterator + '_ {
+        self.affecting_moves.iter().cloned()
+    }
+
+    pub fn push_affecting_move(&mut self, move_index: usize) {
+        let move_index = move_index as u16;
+        let push = if let Some(last_affecting_move) = self.affecting_moves().last() {
+            debug_assert!(last_affecting_move <= move_index);
+
+            last_affecting_move < move_index
+        } else {
+            true
+        };
+
+        if push {
+            self.affecting_moves.push_back(move_index);
+        }
+    }
+
+    pub fn make_initial(&mut self) {
+        self.affecting_moves.clear();
+    }
+
+    pub fn definition_index(&self) -> u16 {
         self.definition
     }
 
-    pub fn owner(&self) -> usize {
+    pub fn owner(&self) -> u8 {
         self.owner
     }
 
     pub fn is_initial(&self) -> bool {
-        self.initial
+        self.affecting_moves.is_empty()
     }
 
     pub fn get_definition<'a>(&'_ self, piece_set: &'a PieceSet<G>) -> &'a PieceDefinition<G> {
-        &piece_set.definitions[self.definition]
+        &piece_set.definitions[self.definition as usize]
     }
 
-    /// Clones the piece but sets the `initial` field to `false`, marking the piece
-    /// as having been moved or affected by another piece's move.
-    pub fn clone_moved(&self) -> Self {
-        Self {
-            transformation: self.transformation.clone(),
-            definition: self.definition.clone(),
-            owner: self.owner.clone(),
-            initial: false,
-        }
-    }
+//     /// Clones the piece but sets the `initial` field to `false`, marking the piece
+//     /// as having been moved or affected by another piece's move.
+//     pub fn clone_moved(&self) -> Self {
+//         Self {
+//             transformation: self.transformation.clone(),
+//             definition: self.definition.clone(),
+//             owner: self.owner.clone(),
+//             affecting_moves:
+//         }
+//     }
 }
 
 /// An unvalidated piece definition is used to construct a [`PieceSet`]. See [`PieceDefinition`]
@@ -208,7 +233,7 @@ pub enum ConditionEnum<G: BoardGeometry> {
     TileFlagPresent {
         before_moves: usize,
         tile: <G as BoardGeometryExt>::Tile,
-        flag: u32,
+        flag: TileFlagIndex,
     },
     /// Evaluates to `true` if a piece is present on the given tile.
     PiecePresent {
@@ -225,14 +250,14 @@ pub enum ConditionEnum<G: BoardGeometry> {
     PieceTypeIs {
         before_moves: usize,
         tile: <G as BoardGeometryExt>::Tile,
-        definition_index: usize,
+        definition_index: PieceDefinitionIndex,
     },
     /// Evaluates to `true` if there is no piece on the tile or if the piece is controlled by the
     /// specified player.
     PieceControlledBy {
         before_moves: usize,
         tile: <G as BoardGeometryExt>::Tile,
-        player: usize,
+        player: PlayerIndex,
     },
     /// Evaluates to `true` if there is no piece on the tile or if the piece is allied to the
     /// current player.
@@ -322,7 +347,7 @@ impl<G: BoardGeometry> ConditionEnum<G> {
                 let tile = isometry.apply(*tile);
                 let past_piece = game.past_tile_piece(*before_moves, tile).unwrap().unwrap();
 
-                past_piece.initial
+                past_piece.is_initial()
             },
             PieceTypeIs { before_moves, tile, definition_index } => {
                 if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*before_moves), game, isometry)
@@ -358,7 +383,7 @@ impl<G: BoardGeometry> ConditionEnum<G> {
                 let tile = isometry.apply(*tile);
                 let past_piece = game.past_tile_piece(*before_moves, tile).unwrap().unwrap();
 
-                past_piece.owner == game.move_log.current_state.currently_playing_player_index
+                past_piece.owner == game.move_log.current_state.current_player_index()
             },
             PieceControlledByEnemy { before_moves, tile } => {
                 if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*before_moves), game, isometry)
@@ -370,7 +395,7 @@ impl<G: BoardGeometry> ConditionEnum<G> {
                 let tile = isometry.apply(*tile);
                 let past_piece = game.past_tile_piece(*before_moves, tile).unwrap().unwrap();
 
-                past_piece.owner != game.move_log.current_state.currently_playing_player_index
+                past_piece.owner != game.move_log.current_state.current_player_index()
             },
         };
 
@@ -473,7 +498,7 @@ pub enum ActionEnum<G: BoardGeometry> {
     SetTile {
         /// The index of the piece within the `PieceSet` to place on the tile
         /// or `None` to clear the tile.
-        piece: Option<usize>,
+        piece: Option<PieceDefinitionIndex>,
         // TODO: Should be isometry so that the piece can be rotated as well?
         /// The target tile to change the contents of.
         target: <G as BoardGeometryExt>::Tile,
@@ -496,7 +521,7 @@ impl<G: BoardGeometry> ActionEnum<G> {
         match self {
             SetTile { piece, .. } => {
                 if let Some(piece) = piece {
-                    if *piece >= definitions.len() {
+                    if *piece >= definitions.len() as PieceDefinitionIndex {
                         return Err(());
                     }
                 }

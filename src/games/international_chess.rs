@@ -3,18 +3,18 @@ use lazy_static::lazy_static;
 use crate::*;
 
 // TODO: Consider changing these to enums
-pub static PLAYER_WHITE: usize = 0;
-pub static PLAYER_BLACK: usize = 1;
+pub static PLAYER_WHITE: PlayerIndex = 0;
+pub static PLAYER_BLACK: PlayerIndex = 1;
 
-pub static PIECE_PAWN: usize   = 0;
-pub static PIECE_ROOK: usize   = 1;
-pub static PIECE_KNIGHT: usize = 2;
-pub static PIECE_BISHOP: usize = 3;
-pub static PIECE_QUEEN: usize  = 4;
-pub static PIECE_KING: usize   = 5;
+pub static PIECE_PAWN: PieceDefinitionIndex   = 0;
+pub static PIECE_ROOK: PieceDefinitionIndex   = 1;
+pub static PIECE_KNIGHT: PieceDefinitionIndex = 2;
+pub static PIECE_BISHOP: PieceDefinitionIndex = 3;
+pub static PIECE_QUEEN: PieceDefinitionIndex  = 4;
+pub static PIECE_KING: PieceDefinitionIndex   = 5;
 
-pub static TILE_FLAG_PROMOTION_WHITE: u32 = 0;
-pub static TILE_FLAG_PROMOTION_BLACK: u32 = 1;
+pub static TILE_FLAG_PROMOTION_WHITE: TileFlagIndex = 0;
+pub static TILE_FLAG_PROMOTION_BLACK: TileFlagIndex = 1;
 
 lazy_static! {
     pub static ref PIECE_SET: PieceSet<SquareBoardGeometry> = {
@@ -408,13 +408,13 @@ lazy_static! {
     });
 
     static ref GAME_STATE_INITIAL: GameState<SquareBoardGeometry> = {
-        static P: usize = PIECE_PAWN;
-        static R: usize = PIECE_ROOK;
-        static N: usize = PIECE_KNIGHT;
-        static B: usize = PIECE_BISHOP;
-        static Q: usize = PIECE_QUEEN;
-        static K: usize = PIECE_KING;
-        static WHITE_PIECES: [[usize; 8]; 2] = [
+        static P: PieceDefinitionIndex = PIECE_PAWN;
+        static R: PieceDefinitionIndex = PIECE_ROOK;
+        static N: PieceDefinitionIndex = PIECE_KNIGHT;
+        static B: PieceDefinitionIndex = PIECE_BISHOP;
+        static Q: PieceDefinitionIndex = PIECE_QUEEN;
+        static K: PieceDefinitionIndex = PIECE_KING;
+        static WHITE_PIECES: [[PieceDefinitionIndex; 8]; 2] = [
             [P, P, P, P, P, P, P, P],
             [R, N, B, Q, K, B, N, R],
         ];
@@ -424,7 +424,7 @@ lazy_static! {
         ];
 
         let mut game_state = GameState::<SquareBoardGeometry>::default();
-        let sides: [(usize, u32, Isometry<SquareBoardGeometry>); 2] = [
+        let sides: [(PlayerIndex, TileFlagIndex, Isometry<SquareBoardGeometry>); 2] = [
             (PLAYER_WHITE, TILE_FLAG_PROMOTION_BLACK, Isometry::default()),
             (PLAYER_BLACK, TILE_FLAG_PROMOTION_WHITE, Isometry::from(SquareBoardGeometry::get_reflective_symmetries()[0].clone() * SquareBoardGeometry::get_rotations()[2].clone()) * Isometry::<SquareBoardGeometry>::translation([0, 7].into())),
         ];
@@ -439,10 +439,10 @@ lazy_static! {
                     let mut tile = game_state.tile_mut(&GAME_BOARD, coords).unwrap();
 
                     tile.set_piece(Some(Piece {
-                        initial: true,
                         definition: *piece,
                         owner: *player,
                         transformation: isometry.axis_permutation.clone(),
+                        affecting_moves: Default::default(),
                     }));
 
                     if *promote {

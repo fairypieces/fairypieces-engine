@@ -408,7 +408,7 @@ impl BoardGeometry for SquareBoardGeometry {
                     if let Some(piece) = tile.get_piece() {
                         let definition = piece.get_definition(&game_rules.piece_set);
                         let title = &definition.title[0..std::cmp::min(3, definition.title.len())];
-                        let colors = COLORS[piece.owner];
+                        let colors = COLORS[piece.owner as usize];
 
                         Cow::Owned(
                             title.truecolor(colors[0][0], colors[0][1], colors[0][2])
