@@ -16,6 +16,107 @@ pub static PIECE_KING: PieceDefinitionIndex   = 5;
 pub static TILE_FLAG_PROMOTION_WHITE: TileFlagIndex = 0;
 pub static TILE_FLAG_PROMOTION_BLACK: TileFlagIndex = 1;
 
+pub mod pieces {
+    use super::*;
+
+    pub static X: Option<PieceDefinitionIndex> = None;
+
+    pub static P: Option<PieceDefinitionIndex> = Some(PIECE_PAWN);
+    pub static R: Option<PieceDefinitionIndex> = Some(PIECE_ROOK);
+    pub static N: Option<PieceDefinitionIndex> = Some(PIECE_KNIGHT);
+    pub static B: Option<PieceDefinitionIndex> = Some(PIECE_BISHOP);
+    pub static Q: Option<PieceDefinitionIndex> = Some(PIECE_QUEEN);
+    pub static K: Option<PieceDefinitionIndex> = Some(PIECE_KING);
+
+    pub static __: Option<(PlayerIndex, PieceDefinitionIndex)> = None;
+
+    pub static WP: Option<(PlayerIndex, PieceDefinitionIndex)> = Some((PLAYER_WHITE, PIECE_PAWN));
+    pub static WR: Option<(PlayerIndex, PieceDefinitionIndex)> = Some((PLAYER_WHITE, PIECE_ROOK));
+    pub static WN: Option<(PlayerIndex, PieceDefinitionIndex)> = Some((PLAYER_WHITE, PIECE_KNIGHT));
+    pub static WB: Option<(PlayerIndex, PieceDefinitionIndex)> = Some((PLAYER_WHITE, PIECE_BISHOP));
+    pub static WQ: Option<(PlayerIndex, PieceDefinitionIndex)> = Some((PLAYER_WHITE, PIECE_QUEEN));
+    pub static WK: Option<(PlayerIndex, PieceDefinitionIndex)> = Some((PLAYER_WHITE, PIECE_KING));
+
+    pub static BP: Option<(PlayerIndex, PieceDefinitionIndex)> = Some((PLAYER_BLACK, PIECE_PAWN));
+    pub static BR: Option<(PlayerIndex, PieceDefinitionIndex)> = Some((PLAYER_BLACK, PIECE_ROOK));
+    pub static BN: Option<(PlayerIndex, PieceDefinitionIndex)> = Some((PLAYER_BLACK, PIECE_KNIGHT));
+    pub static BB: Option<(PlayerIndex, PieceDefinitionIndex)> = Some((PLAYER_BLACK, PIECE_BISHOP));
+    pub static BQ: Option<(PlayerIndex, PieceDefinitionIndex)> = Some((PLAYER_BLACK, PIECE_QUEEN));
+    pub static BK: Option<(PlayerIndex, PieceDefinitionIndex)> = Some((PLAYER_BLACK, PIECE_KING));
+}
+
+pub fn create_initial_state(pieces: [[Option<(PlayerIndex, PieceDefinitionIndex)>; 8]; 8]) -> GameState<SquareBoardGeometry> {
+    let mut game_state = GameState::<SquareBoardGeometry>::default();
+    let player_to_axis_permutation = [
+        AxisPermutation::default(),
+        SquareBoardGeometry::get_reflective_symmetries()[0].clone() * SquareBoardGeometry::get_rotations()[2].clone(),
+    ];
+
+    for (y, tile_flag_promotion) in std::array::IntoIter::new([(0, TILE_FLAG_PROMOTION_BLACK), (7, TILE_FLAG_PROMOTION_WHITE)]) {
+        for x in 0..8 {
+            let coords = [x, y].into();
+            let mut tile = game_state.tile_mut(&GAME_BOARD, coords).unwrap();
+            tile.set_flag(tile_flag_promotion, true);
+        }
+    }
+
+    for (y, pieces_row) in pieces.iter().rev().enumerate() {
+        for (x, piece) in pieces_row.iter().enumerate() {
+            if let Some((player, piece)) = piece {
+                let coords: <SquareBoardGeometry as BoardGeometryExt>::Tile = [x as IVecComponent, y as IVecComponent].into();
+                let mut tile = game_state.tile_mut(&GAME_BOARD, coords).unwrap();
+
+                tile.set_piece(Some(Piece {
+                    definition: *piece,
+                    owner: *player,
+                    transformation: player_to_axis_permutation[*player as usize].clone(),
+                    affecting_moves: Default::default(),
+                }));
+            }
+        }
+    }
+
+    game_state
+}
+
+pub fn create_initial_state_symmetrical(white_pieces: &[[Option<PieceDefinitionIndex>; 8]]) -> GameState<SquareBoardGeometry> {
+    assert!(white_pieces.len() <= 4);
+
+    let mut game_state = GameState::<SquareBoardGeometry>::default();
+    let sides: [(PlayerIndex, TileFlagIndex, Isometry<SquareBoardGeometry>); 2] = [
+        (PLAYER_WHITE, TILE_FLAG_PROMOTION_BLACK, Isometry::default()),
+        (PLAYER_BLACK, TILE_FLAG_PROMOTION_WHITE, Isometry::from(SquareBoardGeometry::get_reflective_symmetries()[0].clone() * SquareBoardGeometry::get_rotations()[2].clone()) * Isometry::<SquareBoardGeometry>::translation([0, 7].into())),
+    ];
+
+    for (player, tile_flag_promotion, isometry) in &sides {
+        for (y_inv, pieces_row) in white_pieces.iter().enumerate() {
+            let y = 1 - y_inv;
+            let promote = y == 0;
+
+            for (x, piece) in pieces_row.iter().enumerate() {
+                let mut coords: <SquareBoardGeometry as BoardGeometryExt>::Tile = [x as IVecComponent, y as IVecComponent].into();
+                coords = isometry.apply(coords);
+                let mut tile = game_state.tile_mut(&GAME_BOARD, coords).unwrap();
+
+                if let Some(piece) = piece {
+                    tile.set_piece(Some(Piece {
+                        definition: *piece,
+                        owner: *player,
+                        transformation: isometry.axis_permutation.clone(),
+                        affecting_moves: Default::default(),
+                    }));
+                }
+
+                if promote {
+                    tile.set_flag(*tile_flag_promotion, true);
+                }
+            }
+        }
+    }
+
+    game_state
+}
+
 lazy_static! {
     pub static ref PIECE_SET: PieceSet<SquareBoardGeometry> = {
         let definitions = vec![
@@ -47,7 +148,7 @@ lazy_static! {
                     ]),
                     actions: Default::default(),
                     move_choices: vec![[0, 2].into()].into_iter().collect(),
-                }).with_successors(vec![5]))
+                }).with_marked(true).with_successors(vec![5]))
                 // Capture diagonally
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
@@ -61,26 +162,25 @@ lazy_static! {
                 // En-passant
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
-                        // Check enemy pawn has been advanced by two tiles in the previous move
-                        ConditionEnum::MovesPlayedGreaterThanOrEqual(2),
-                        // Before previous move:
-                        ConditionEnum::TilePresent { before_moves: 2, tile: [1, 2].into() },
-                        ConditionEnum::TilePresent { before_moves: 2, tile: [1, 1].into() },
-                        ConditionEnum::TilePresent { before_moves: 2, tile: [1, 0].into() },
-                        ConditionEnum::PiecePresent { before_moves: 2, tile: [1, 2].into() },
-                        ConditionEnum::not(ConditionEnum::PiecePresent { before_moves: 2, tile: [1, 1].into() }),
-                        ConditionEnum::not(ConditionEnum::PiecePresent { before_moves: 2, tile: [1, 0].into() }),
-                        ConditionEnum::PieceTypeIs { before_moves: 2, tile: [1, 2].into(), definition_index: PIECE_PAWN },
-                        ConditionEnum::PieceControlledByEnemy { before_moves: 2, tile: [1, 2].into() },
-                        // After previous move:
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [1, 2].into() },
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [1, 1].into() },
+                        // Check that at least one move was played before the current move.
+                        ConditionEnum::MovesPlayedGreaterThanOrEqual(1),
+                        // The preceding move was a pawn move.
+                        ConditionEnum::MoveGeneratedByPiece { past_move: 1, piece_definition: PIECE_PAWN },
+                        // The preceding move was a pawn's 2-tile advancement move.
+                        ConditionEnum::MoveGeneratedByVisitingMarkedState { past_move: 1, state_index: 2 },
+                        // There is a tile right of the pawn.
                         ConditionEnum::TilePresent { before_moves: 0, tile: [1, 0].into() },
-                        ConditionEnum::not(ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 2].into() }),
-                        ConditionEnum::not(ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 1].into() }),
+                        // There is a piece right of the pawn.
                         ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 0].into() },
-                        ConditionEnum::PieceTypeIs { before_moves: 0, tile: [1, 0].into(), definition_index: PIECE_PAWN },
+                        // That piece is an enemy piece.
                         ConditionEnum::PieceControlledByEnemy { before_moves: 0, tile: [1, 0].into() },
+                        // That piece is affected by the pawn's 2-tile advancement move, meaning it
+                        // was the pawn, because the move does not affect any other piece.
+                        //
+                        // Note: We do not check whether the piece is of a specific type, because
+                        // it may have been promoted, if the board is set up in a different way
+                        // than the standard board of international chess.
+                        ConditionEnum::PieceAffectedByMove { past_move: 1, tile: [1, 0].into() },
                     ]),
                     actions: vec![ActionEnum::SetTile {
                         target: [1, 0].into(),
@@ -408,51 +508,11 @@ lazy_static! {
     });
 
     static ref GAME_STATE_INITIAL: GameState<SquareBoardGeometry> = {
-        static P: PieceDefinitionIndex = PIECE_PAWN;
-        static R: PieceDefinitionIndex = PIECE_ROOK;
-        static N: PieceDefinitionIndex = PIECE_KNIGHT;
-        static B: PieceDefinitionIndex = PIECE_BISHOP;
-        static Q: PieceDefinitionIndex = PIECE_QUEEN;
-        static K: PieceDefinitionIndex = PIECE_KING;
-        static WHITE_PIECES: [[PieceDefinitionIndex; 8]; 2] = [
+        use pieces::*;
+        create_initial_state_symmetrical(&[
             [P, P, P, P, P, P, P, P],
             [R, N, B, Q, K, B, N, R],
-        ];
-        static PROMOTE: [[bool; 8]; 2] = [
-            [false, false, false, false, false, false, false, false],
-            [ true,  true,  true,  true,  true,  true,  true,  true],
-        ];
-
-        let mut game_state = GameState::<SquareBoardGeometry>::default();
-        let sides: [(PlayerIndex, TileFlagIndex, Isometry<SquareBoardGeometry>); 2] = [
-            (PLAYER_WHITE, TILE_FLAG_PROMOTION_BLACK, Isometry::default()),
-            (PLAYER_BLACK, TILE_FLAG_PROMOTION_WHITE, Isometry::from(SquareBoardGeometry::get_reflective_symmetries()[0].clone() * SquareBoardGeometry::get_rotations()[2].clone()) * Isometry::<SquareBoardGeometry>::translation([0, 7].into())),
-        ];
-
-        for (player, tile_flag_promotion, isometry) in &sides {
-            for (y_inv, (pieces_row, promote_row)) in WHITE_PIECES.iter().zip(PROMOTE.iter()).enumerate() {
-                let y = 1 - y_inv;
-
-                for (x, (piece, promote)) in pieces_row.iter().zip(promote_row.iter()).enumerate() {
-                    let mut coords: <SquareBoardGeometry as BoardGeometryExt>::Tile = [x as IVecComponent, y as IVecComponent].into();
-                    coords = isometry.apply(coords);
-                    let mut tile = game_state.tile_mut(&GAME_BOARD, coords).unwrap();
-
-                    tile.set_piece(Some(Piece {
-                        definition: *piece,
-                        owner: *player,
-                        transformation: isometry.axis_permutation.clone(),
-                        affecting_moves: Default::default(),
-                    }));
-
-                    if *promote {
-                        tile.set_flag(*tile_flag_promotion, true);
-                    }
-                }
-            }
-        }
-
-        game_state
+        ])
     };
 
     static ref GAME_RULES: GameRules<SquareBoardGeometry> = GameRules {
