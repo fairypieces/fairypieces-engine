@@ -120,7 +120,6 @@ pub fn create_initial_state_symmetrical(white_pieces: &[[Option<PieceDefinitionI
 lazy_static! {
     pub static ref PIECE_SET: PieceSet<SquareBoardGeometry> = {
         let definitions = vec![
-            // TODO: Promote when last row reached
             PieceDefinitionUnvalidated::new("Pawn")
                 // Pawns' moves are vertically symmetrical
                 .with_initial_state(StateUnvalidated::new(Action::Symmetry {
