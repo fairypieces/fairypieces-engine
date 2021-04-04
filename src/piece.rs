@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 use crate::Game;
-use crate::game::PlayerIndex;
+use crate::game::{PlayerIndex, Move};
 use crate::math::*;
 use crate::board::*;
 
@@ -322,9 +322,28 @@ pub enum ConditionEnum<G: BoardGeometry> {
         before_moves: usize,
         tile: <G as BoardGeometryExt>::Tile,
     },
+    /// Evaluates to `true` if the move that is currently being generated, made up of the actions
+    /// executed on this evaluation branch, would be a legal move.
+    UnfinishedMoveLegal,
+}
+
+pub struct ConditionEvaluationContext<'a, G: BoardGeometry> {
+    pub game: &'a Game<G>,
+    pub previous_game: &'a Game<G>,
+    pub current_player: PlayerIndex,
+    pub isometry: &'a Isometry<G>,
+    pub debug: bool,
 }
 
 impl<G: BoardGeometry> ConditionEnum<G> {
+    pub fn always() -> Self {
+        ConditionEnum::All(Default::default())
+    }
+
+    pub fn never() -> Self {
+        ConditionEnum::Any(Default::default())
+    }
+
     pub fn not(inner: Self) -> Self {
         ConditionEnum::Not(Box::new(inner))
     }
@@ -337,166 +356,172 @@ impl<G: BoardGeometry> ConditionEnum<G> {
         ConditionEnum::All(conditions.into_iter().collect())
     }
 
-    pub fn evaluate(&self, game: &Game<G>, isometry: &Isometry<G>, debug: bool) -> bool {
+    pub fn evaluate(&self, context: &ConditionEvaluationContext<'_, G>) -> bool {
         use ConditionEnum::*;
         let result = match self {
             Any(children) => {
-                children.iter().any(|child| child.evaluate(game, isometry, debug))
+                children.iter().any(|child| child.evaluate(context))
             },
             All(children) => {
-                children.iter().all(|child| child.evaluate(game, isometry, debug))
+                children.iter().all(|child| child.evaluate(context))
             },
-            Not(child) => !child.evaluate(game, isometry, debug),
+            Not(child) => !child.evaluate(context),
             MovesPlayedGreaterThanOrEqual(moves) => {
                 // Subtract 1 from the move log length, because the current state
                 // of the board contains a temporary move (which was not played by any of the
                 // players) used for computing the resulting move.
-                game.move_log.moves.len() >= *moves + 1
+                context.game.move_log.moves.len() >= *moves + 1
             },
             MoveGeneratedByPiece { past_move, piece_definition } => {
-                if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*past_move), game, isometry, debug) {
+                if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*past_move), context) {
                     return true;
                 }
 
-                let mv = game.move_log().moves().nth_back(*past_move).unwrap();
+                let mv = context.game.move_log().moves().nth_back(*past_move).unwrap();
                 let move_type = mv.move_type();
 
                 move_type.definition == *piece_definition
             },
             MoveGeneratedByFinalState { past_move, state_index } => {
-                if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*past_move), game, isometry, debug) {
+                if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*past_move), context) {
                     return true;
                 }
 
-                let mv = game.move_log().moves().nth_back(*past_move).unwrap();
+                let mv = context.game.move_log().moves().nth_back(*past_move).unwrap();
                 let move_type = mv.move_type();
 
                 move_type.final_state == *state_index
             },
             MoveGeneratedByVisitingMarkedState { past_move, state_index } => {
-                if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*past_move), game, isometry, debug) {
+                if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*past_move), context) {
                     return true;
                 }
 
-                let mv = game.move_log().moves().nth_back(*past_move).unwrap();
+                let mv = context.game.move_log().moves().nth_back(*past_move).unwrap();
                 let move_type = mv.move_type();
 
                 move_type.has_visited_marked_state(*state_index)
             },
             TilePresent { before_moves, tile } => {
-                if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*before_moves), game, isometry, debug) {
+                if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*before_moves), context) {
                     return true;
                 }
 
-                let tile = isometry.apply(*tile);
-                game.past_tile_piece(*before_moves, tile).is_ok()
+                let tile = context.isometry.apply(*tile);
+                context.game.past_tile_piece(*before_moves, tile).is_ok()
             },
             TileTypeIs { before_moves, tile, type_index } => {
-                if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*before_moves), game, isometry, debug)
-                    || !Self::evaluate(&TilePresent { before_moves: *before_moves, tile: *tile }, game, isometry, debug) {
+                if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*before_moves), context)
+                    || !Self::evaluate(&TilePresent { before_moves: *before_moves, tile: *tile }, context) {
                     return true;
                 }
 
-                let tile = isometry.apply(*tile);
+                let tile = context.isometry.apply(*tile);
                 <G as BoardGeometry>::get_tile_type(tile) == *type_index
             },
             TileFlagPresent { before_moves, tile, flag } => {
-                if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*before_moves), game, isometry, debug)
-                    || !Self::evaluate(&TilePresent { before_moves: *before_moves, tile: *tile }, game, isometry, debug) {
+                if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*before_moves), context)
+                    || !Self::evaluate(&TilePresent { before_moves: *before_moves, tile: *tile }, context) {
                     return true;
                 }
 
-                let tile = isometry.apply(*tile);
+                let tile = context.isometry.apply(*tile);
 
-                game.past_tile_flag(*before_moves, tile, *flag).unwrap()
+                context.game.past_tile_flag(*before_moves, tile, *flag).unwrap()
             },
             PiecePresent { before_moves, tile } => {
-                if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*before_moves), game, isometry, debug)
-                    || !Self::evaluate(&TilePresent { before_moves: *before_moves, tile: *tile }, game, isometry, debug) {
+                if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*before_moves), context)
+                    || !Self::evaluate(&TilePresent { before_moves: *before_moves, tile: *tile }, context) {
                     return true;
                 }
 
-                let tile = isometry.apply(*tile);
-                let past_piece = game.past_tile_piece(*before_moves, tile).unwrap();
+                let tile = context.isometry.apply(*tile);
+                let past_piece = context.game.past_tile_piece(*before_moves, tile).unwrap();
 
                 past_piece.is_some()
             },
             PieceAffectedByMove { tile, past_move } => {
-                if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*past_move), game, isometry, debug)
-                    || !Self::evaluate(&TilePresent { before_moves: *past_move, tile: *tile }, game, isometry, debug)
-                    || !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*past_move), game, isometry, debug) {
+                if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*past_move), context)
+                    || !Self::evaluate(&TilePresent { before_moves: *past_move, tile: *tile }, context)
+                    || !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*past_move), context) {
                     return true;
                 }
 
-                let tile = isometry.apply(*tile);
-                let past_piece = game.past_tile_piece(*past_move, tile).unwrap().unwrap();
-                let absolute_move = game.move_log().len() - 1 - past_move;
+                let tile = context.isometry.apply(*tile);
+                let past_piece = context.game.past_tile_piece(*past_move, tile).unwrap().unwrap();
+                let absolute_move = context.game.move_log().len() - 1 - past_move;
 
                 past_piece.was_affected_by_move(absolute_move)
             },
             PieceInitial { before_moves, tile } => {
-                if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*before_moves), game, isometry, debug)
-                    || !Self::evaluate(&TilePresent { before_moves: *before_moves, tile: *tile }, game, isometry, debug)
-                    || !Self::evaluate(&PiecePresent { before_moves: *before_moves, tile: *tile }, game, isometry, debug) {
+                if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*before_moves), context)
+                    || !Self::evaluate(&TilePresent { before_moves: *before_moves, tile: *tile }, context)
+                    || !Self::evaluate(&PiecePresent { before_moves: *before_moves, tile: *tile }, context) {
                     return true;
                 }
 
-                let tile = isometry.apply(*tile);
-                let past_piece = game.past_tile_piece(*before_moves, tile).unwrap().unwrap();
+                let tile = context.isometry.apply(*tile);
+                let past_piece = context.game.past_tile_piece(*before_moves, tile).unwrap().unwrap();
 
                 past_piece.is_initial()
             },
             PieceTypeIs { before_moves, tile, definition_index } => {
-                if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*before_moves), game, isometry, debug)
-                    || !Self::evaluate(&TilePresent { before_moves: *before_moves, tile: *tile }, game, isometry, debug)
-                    || !Self::evaluate(&PiecePresent { before_moves: *before_moves, tile: *tile }, game, isometry, debug) {
+                if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*before_moves), context)
+                    || !Self::evaluate(&TilePresent { before_moves: *before_moves, tile: *tile }, context)
+                    || !Self::evaluate(&PiecePresent { before_moves: *before_moves, tile: *tile }, context) {
                     return true;
                 }
 
-                let tile = isometry.apply(*tile);
-                let past_piece = game.past_tile_piece(*before_moves, tile).unwrap().unwrap();
+                let tile = context.isometry.apply(*tile);
+                let past_piece = context.game.past_tile_piece(*before_moves, tile).unwrap().unwrap();
 
                 past_piece.definition == *definition_index
             },
             PieceControlledBy { before_moves, tile, player } => {
-                if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*before_moves), game, isometry, debug)
-                    || !Self::evaluate(&TilePresent { before_moves: *before_moves, tile: *tile }, game, isometry, debug)
-                    || !Self::evaluate(&PiecePresent { before_moves: *before_moves, tile: *tile }, game, isometry, debug) {
+                if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*before_moves), context)
+                    || !Self::evaluate(&TilePresent { before_moves: *before_moves, tile: *tile }, context)
+                    || !Self::evaluate(&PiecePresent { before_moves: *before_moves, tile: *tile }, context) {
                     return true;
                 }
 
-                let tile = isometry.apply(*tile);
-                let past_piece = game.past_tile_piece(*before_moves, tile).unwrap().unwrap();
+                let tile = context.isometry.apply(*tile);
+                let past_piece = context.game.past_tile_piece(*before_moves, tile).unwrap().unwrap();
 
                 past_piece.owner == *player
             },
             PieceControlledByAlly { before_moves, tile } => {
-                if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*before_moves), game, isometry, debug)
-                    || !Self::evaluate(&TilePresent { before_moves: *before_moves, tile: *tile }, game, isometry, debug)
-                    || !Self::evaluate(&PiecePresent { before_moves: *before_moves, tile: *tile }, game, isometry, debug) {
+                if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*before_moves), context)
+                    || !Self::evaluate(&TilePresent { before_moves: *before_moves, tile: *tile }, context)
+                    || !Self::evaluate(&PiecePresent { before_moves: *before_moves, tile: *tile }, context) {
                     return true;
                 }
 
-                let tile = isometry.apply(*tile);
-                let past_piece = game.past_tile_piece(*before_moves, tile).unwrap().unwrap();
+                let tile = context.isometry.apply(*tile);
+                let past_piece = context.game.past_tile_piece(*before_moves, tile).unwrap().unwrap();
 
-                past_piece.owner == game.move_log.current_state.current_player_index()
+                past_piece.owner == context.current_player
             },
             PieceControlledByEnemy { before_moves, tile } => {
-                if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*before_moves), game, isometry, debug)
-                    || !Self::evaluate(&TilePresent { before_moves: *before_moves, tile: *tile }, game, isometry, debug)
-                    || !Self::evaluate(&PiecePresent { before_moves: *before_moves, tile: *tile }, game, isometry, debug) {
+                if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*before_moves), context)
+                    || !Self::evaluate(&TilePresent { before_moves: *before_moves, tile: *tile }, context)
+                    || !Self::evaluate(&PiecePresent { before_moves: *before_moves, tile: *tile }, context) {
                     return true;
                 }
 
-                let tile = isometry.apply(*tile);
-                let past_piece = game.past_tile_piece(*before_moves, tile).unwrap().unwrap();
+                let tile = context.isometry.apply(*tile);
+                let past_piece = context.game.past_tile_piece(*before_moves, tile).unwrap().unwrap();
 
-                past_piece.owner != game.move_log.current_state.current_player_index()
+                past_piece.owner != context.current_player
+            },
+            UnfinishedMoveLegal => {
+                // Unwrap safety: The last move is the unfinished move currently being generated.
+                let mv = context.game.move_log().moves().last().unwrap();
+
+                context.previous_game.rules().victory_conditions().is_move_legal(context.previous_game, mv)
             },
         };
 
-        if debug {
+        if context.debug {
             println!("{result} = {self:#?}");
         }
 

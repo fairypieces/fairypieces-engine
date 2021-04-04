@@ -122,6 +122,7 @@ lazy_static! {
         let definitions = vec![
             // TODO: Promote when last row reached
             PieceDefinitionUnvalidated::new("Pawn")
+                // Pawns' moves are vertically symmetrical
                 .with_initial_state(StateUnvalidated::new(Action::Symmetry {
                     symmetries: vec![
                         Default::default(),
@@ -309,9 +310,11 @@ lazy_static! {
                     move_choices: vec![[0, 0].into()].into_iter().collect(),
                 }).with_final(true)),
             PieceDefinitionUnvalidated::new("Rook")
+                // Rooks' moves are rotationally symmetrical
                 .with_initial_state(StateUnvalidated::new(Action::Symmetry {
                     symmetries: SquareBoardGeometry::get_rotations().into_iter().collect(),
                 }).with_successors(vec![1, 2]))
+                // Move to the right 0 or more times
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
                         ConditionEnum::TilePresent { before_moves: 0, tile: [0, 1].into() },
@@ -320,6 +323,7 @@ lazy_static! {
                     actions: Default::default(),
                     move_choices: vec![[0, 1].into()].into_iter().collect(),
                 }).with_final(true).with_successors(vec![1, 2]))
+                // Capture a move to the right
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
                         ConditionEnum::TilePresent { before_moves: 0, tile: [0, 1].into() },
@@ -330,6 +334,7 @@ lazy_static! {
                     move_choices: vec![[0, 1].into()].into_iter().collect(),
                 }).with_final(true)),
             PieceDefinitionUnvalidated::new("Knight")
+                // Knights' moves are both rotationally and reflectively symmetrical
                 .with_initial_state(StateUnvalidated::new(Action::Symmetry {
                     symmetries: SquareBoardGeometry::get_rotations().into_iter().flat_map(|rotation| {
                         vec![
@@ -340,6 +345,7 @@ lazy_static! {
                         })
                     }).collect()
                 }).with_successor(1))
+                // Move or capture with a knight
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
                         ConditionEnum::TilePresent { before_moves: 0, tile: [2, 1].into() },
@@ -349,9 +355,11 @@ lazy_static! {
                     move_choices: vec![[2, 1].into()].into_iter().collect(),
                 }).with_final(true)),
             PieceDefinitionUnvalidated::new("Bishop")
+                // Bishop' moves are rotationally symmetrical
                 .with_initial_state(StateUnvalidated::new(Action::Symmetry {
                     symmetries: SquareBoardGeometry::get_rotations().into_iter().collect(),
                 }).with_successors(vec![1, 2]))
+                // Move to the top right 0 or more times
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
                         ConditionEnum::TilePresent { before_moves: 0, tile: [1, 1].into() },
@@ -360,6 +368,7 @@ lazy_static! {
                     actions: Default::default(),
                     move_choices: vec![[1, 1].into()].into_iter().collect(),
                 }).with_final(true).with_successors(vec![1, 2]))
+                // Capture a move to the top right
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
                         ConditionEnum::TilePresent { before_moves: 0, tile: [1, 1].into() },
@@ -370,9 +379,11 @@ lazy_static! {
                     move_choices: vec![[1, 1].into()].into_iter().collect(),
                 }).with_final(true)),
             PieceDefinitionUnvalidated::new("Queen")
+                // Queens' moves are rotationally symmetrical
                 .with_initial_state(StateUnvalidated::new(Action::Symmetry {
                     symmetries: SquareBoardGeometry::get_rotations().into_iter().collect(),
                 }).with_successors(vec![1, 2, 3, 4]))
+                // Move upwards 0 or more times
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
                         ConditionEnum::TilePresent { before_moves: 0, tile: [0, 1].into() },
@@ -381,6 +392,7 @@ lazy_static! {
                     actions: Default::default(),
                     move_choices: vec![[0, 1].into()].into_iter().collect(),
                 }).with_final(true).with_successors(vec![1, 2]))
+                // Capture upwards
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
                         ConditionEnum::TilePresent { before_moves: 0, tile: [0, 1].into() },
@@ -390,6 +402,7 @@ lazy_static! {
                     actions: Default::default(),
                     move_choices: vec![[0, 1].into()].into_iter().collect(),
                 }).with_final(true))
+                // Move to the top right 0 or more times
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
                         ConditionEnum::TilePresent { before_moves: 0, tile: [1, 1].into() },
@@ -398,6 +411,7 @@ lazy_static! {
                     actions: Default::default(),
                     move_choices: vec![[1, 1].into()].into_iter().collect(),
                 }).with_final(true).with_successors(vec![3, 4]))
+                // Capture to the top right
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
                         ConditionEnum::TilePresent { before_moves: 0, tile: [1, 1].into() },
@@ -408,9 +422,11 @@ lazy_static! {
                     move_choices: vec![[1, 1].into()].into_iter().collect(),
                 }).with_final(true)),
             PieceDefinitionUnvalidated::new("King")
+                // Kings' moves are rotationally symmetrical
                 .with_initial_state(StateUnvalidated::new(Action::Symmetry {
                     symmetries: SquareBoardGeometry::get_rotations().into_iter().collect(),
                 }).with_successors(vec![1, 2]))
+                // Move or capture to the right
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
                         ConditionEnum::TilePresent { before_moves: 0, tile: [0, 1].into() },
@@ -419,6 +435,7 @@ lazy_static! {
                     actions: Default::default(),
                     move_choices: vec![[0, 1].into()].into_iter().collect(),
                 }).with_final(true))
+                // Move or capture to the top right
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
                         ConditionEnum::TilePresent { before_moves: 0, tile: [1, 1].into() },
@@ -429,66 +446,118 @@ lazy_static! {
                 }).with_final(true))
                 // Castles (symmetrical)
                 //
-                // FIXME: Castling may only be performed if:
-                // * The king is not currently in check.
-                // * The king does not pass through a square that is attacked by an enemy piece.
-                // These requirements are currently not enforced.
+                // Requirements for castling, as defined by FIDE:
+                // * The castling must be kingside or queenside.
+                //     - Kingside is handled by state #4, queenside by state #7.
+                // * Neither the king nor the chosen rook has previously moved.
+                //     - Ensured using `PieceInitial` in states #4 and #7.
+                // * There are no pieces between the king and the chosen rook.
+                //     - Ensured using `TilePresent` and `PiecePresent` conditions in state #4 and #7.
+                // * The king is not currently in check and the king does not pass
+                //   through a square that is attacked by an enemy piece.
+                //     - Ensured by moving the king by one tile per state and checking that the
+                //       unfinished move is legal using `UnfinishedMoveLegal`.
+                // * The king does not end up in check. (True of any legal move.)
                 .with_initial_state(StateUnvalidated::new(Action::Symmetry {
                     symmetries: vec![Default::default(), SquareBoardGeometry::get_reflective_symmetries()[0].clone()].into_iter().collect(),
-                }).with_successors(vec![4, 5]))
+                }).with_successors(vec![4, 7]))
                 // King side castle
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
+                        // Ensure tiles are present up to the rook
                         ConditionEnum::TilePresent { before_moves: 0, tile: [1, 0].into() },
                         ConditionEnum::TilePresent { before_moves: 0, tile: [2, 0].into() },
                         ConditionEnum::TilePresent { before_moves: 0, tile: [3, 0].into() },
+                        // Ensure no pieces are inbetween the king and the rook
                         ConditionEnum::not(ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 0].into() }),
                         ConditionEnum::not(ConditionEnum::PiecePresent { before_moves: 0, tile: [2, 0].into() }),
+                        // Ensure a piece is on the H file
                         ConditionEnum::PiecePresent { before_moves: 0, tile: [3, 0].into() },
+                        // Ensure that piece is a rook
                         ConditionEnum::PieceTypeIs { before_moves: 0, tile: [3, 0].into(), definition_index: PIECE_ROOK },
+                        // Ensure that piece is allied
                         ConditionEnum::PieceControlledByAlly { before_moves: 0, tile: [3, 0].into() },
+                        // Ensure both the rook and the king have not been moved or affected by a
+                        // move prior to castling
                         ConditionEnum::PieceInitial { before_moves: 0, tile: [0, 0].into() },
                         ConditionEnum::PieceInitial { before_moves: 0, tile: [3, 0].into() },
+                        // Ensure the king is not currently in check
+                        ConditionEnum::UnfinishedMoveLegal,
                     ]),
+                    actions: Default::default(),
+                    move_choices: vec![[1, 0].into()].into_iter().collect(),
+                }).with_successors(vec![5]))
+                // The king was moved one tile towards the king-side rook
+                .with_state(StateUnvalidated::new(Action::Move {
+                    // Ensure the king is not currently in check
+                    condition: ConditionEnum::UnfinishedMoveLegal,
+                    actions: Default::default(),
+                    move_choices: vec![[1, 0].into()].into_iter().collect(),
+                }).with_successors(vec![6]))
+                // The king was moved two tiles towards the king-side rook, into its final position
+                .with_state(StateUnvalidated::new(Action::Move {
+                    condition: ConditionEnum::always(),
                     actions: vec![
                         ActionEnum::CopyTile {
-                            source: [3, 0].into(),
-                            target: [1, 0].into(),
+                            source: [1, 0].into(),
+                            target: [-1, 0].into(),
                         },
                         ActionEnum::SetTile {
-                            target: [3, 0].into(),
+                            target: [1, 0].into(),
                             piece: None,
                         },
                     ].into_iter().collect(),
-                    move_choices: vec![[2, 0].into()].into_iter().collect(),
+                    move_choices: vec![[0, 0].into()].into_iter().collect(),
                 }).with_final(true))
                 // Queen side castle
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
+                        // Ensure tiles are present up to the rook
                         ConditionEnum::TilePresent { before_moves: 0, tile: [1, 0].into() },
                         ConditionEnum::TilePresent { before_moves: 0, tile: [2, 0].into() },
                         ConditionEnum::TilePresent { before_moves: 0, tile: [3, 0].into() },
                         ConditionEnum::TilePresent { before_moves: 0, tile: [4, 0].into() },
+                        // Ensure no pieces are inbetween the king and the rook
                         ConditionEnum::not(ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 0].into() }),
                         ConditionEnum::not(ConditionEnum::PiecePresent { before_moves: 0, tile: [2, 0].into() }),
                         ConditionEnum::not(ConditionEnum::PiecePresent { before_moves: 0, tile: [3, 0].into() }),
+                        // Ensure a piece is on the A file
                         ConditionEnum::PiecePresent { before_moves: 0, tile: [4, 0].into() },
+                        // Ensure that piece is a rook
                         ConditionEnum::PieceTypeIs { before_moves: 0, tile: [4, 0].into(), definition_index: PIECE_ROOK },
+                        // Ensure that piece is allied
                         ConditionEnum::PieceControlledByAlly { before_moves: 0, tile: [4, 0].into() },
+                        // Ensure both the rook and the king have not been moved or affected by a
+                        // move prior to castling
                         ConditionEnum::PieceInitial { before_moves: 0, tile: [0, 0].into() },
                         ConditionEnum::PieceInitial { before_moves: 0, tile: [4, 0].into() },
+                        // Ensure the king is not currently in check
+                        ConditionEnum::UnfinishedMoveLegal,
                     ]),
+                    actions: Default::default(),
+                    move_choices: vec![[1, 0].into()].into_iter().collect(),
+                }).with_successors(vec![8]))
+                // The king was moved one tile towards the queen-side rook
+                .with_state(StateUnvalidated::new(Action::Move {
+                    // Ensure the king is not currently in check
+                    condition: ConditionEnum::UnfinishedMoveLegal,
+                    actions: Default::default(),
+                    move_choices: vec![[1, 0].into()].into_iter().collect(),
+                }).with_successors(vec![9]))
+                // The king was moved two tiles towards the queen-side rook, into its final position
+                .with_state(StateUnvalidated::new(Action::Move {
+                    condition: ConditionEnum::always(),
                     actions: vec![
                         ActionEnum::CopyTile {
-                            source: [4, 0].into(),
-                            target: [1, 0].into(),
+                            source: [2, 0].into(),
+                            target: [-1, 0].into(),
                         },
                         ActionEnum::SetTile {
-                            target: [4, 0].into(),
+                            target: [2, 0].into(),
                             piece: None,
                         },
                     ].into_iter().collect(),
-                    move_choices: vec![[2, 0].into()].into_iter().collect(),
+                    move_choices: vec![[0, 0].into()].into_iter().collect(),
                 }).with_final(true))
         ];
 

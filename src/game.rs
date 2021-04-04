@@ -405,8 +405,7 @@ impl<G: BoardGeometry> Game<G> {
             // The current game (self) with the applied `GameStateDelta` of the current `QueueItem`.
             let game = {
                 let mut game = self.clone();
-                let mut partial_delta = delta.clone();
-                partial_delta.next_player = current_player;
+                let partial_delta = delta.clone();
 
                 game.normalize_and_append_delta_unchecked_without_evaluation(partial_delta, move_type.clone());
 
@@ -432,7 +431,15 @@ impl<G: BoardGeometry> Game<G> {
                     //
                     // TODO: Should `Action::Symmetry` have conditions as well? Consider creating a
                     //       `ConditionalAction` type to store conditions and the `Action`.
-                    if !condition.evaluate(&game, &isometry, debug) {
+                    let condition_evaluation_context = ConditionEvaluationContext {
+                        game: &game,
+                        previous_game: self,
+                        current_player,
+                        isometry: &isometry,
+                        debug,
+                    };
+
+                    if !condition.evaluate(&condition_evaluation_context) {
                         continue;
                     }
 
@@ -536,7 +543,7 @@ impl<G: BoardGeometry> Game<G> {
         // Retain only valid moves, according to the game's `VictoryCondition`.
         let valid_moves: FxHashSet<_> = potential_moves.into_iter()
             .filter(|mv| {
-                self.rules().victory_conditions.is_move_valid(self, mv)
+                self.rules().victory_conditions.is_move_legal(self, mv.delta())
             })
             .collect();
 
@@ -572,7 +579,7 @@ pub trait VictoryCondition<G: BoardGeometry>: Send + Sync + Debug + DynClone {
     fn evaluate(&self, game: &Game<G>) -> Option<Outcome>;
 
     /// Determines whether a pseudo-legal move is legal.
-    fn is_move_valid(&self, current_state: &Game<G>, mv: &Move<G>) -> bool;
+    fn is_move_legal(&self, current_state: &Game<G>, mv: &ReversibleGameStateDelta<G>) -> bool;
 }
 
 dyn_clone::clone_trait_object!(<G> VictoryCondition<G> where G: BoardGeometry);
@@ -587,7 +594,7 @@ impl<G: BoardGeometry> VictoryCondition<G> for NoVictoryCondition {
         None
     }
 
-    fn is_move_valid(&self, _current_state: &Game<G>, _mv: &Move<G>) -> bool {
+    fn is_move_legal(&self, _current_state: &Game<G>, _mv: &ReversibleGameStateDelta<G>) -> bool {
         true
     }
 }
@@ -632,11 +639,11 @@ where
         self.inner.evaluate(game)
     }
 
-    fn is_move_valid(&self, current_state: &Game<G>, mv: &Move<G>) -> bool {
+    fn is_move_legal(&self, current_state: &Game<G>, mv: &ReversibleGameStateDelta<G>) -> bool {
         let mut defending_game = current_state.clone_with_victory_conditions(Box::new(self.inner.clone()));
 
         // Play the defending move of the current player.
-        defending_game.append_unchecked(mv.clone());
+        defending_game.append_delta_unchecked(mv.clone());
 
         // Find an attacking move that would decide the game.
         for attacking_move in defending_game.available_moves().moves() {
@@ -792,11 +799,11 @@ impl<G: BoardGeometry> VictoryCondition<G> for RoyalVictoryCondition {
         }
     }
 
-    fn is_move_valid(&self, current_state: &Game<G>, mv: &Move<G>) -> bool {
+    fn is_move_legal(&self, current_state: &Game<G>, mv: &ReversibleGameStateDelta<G>) -> bool {
         let current_player = current_state.move_log().current_state().current_player_index();
         let mut game = current_state.clone();
 
-        game.append_unchecked_without_evaluation(mv.clone());
+        game.append_delta_unchecked_without_evaluation(mv.clone());
 
         // Do not let the player make a move that result in them lose the game.
         if let Some(Outcome::Decisive { winner }) = game.get_outcome() {
@@ -832,6 +839,9 @@ impl<G: BoardGeometry> GameRules<G> {
         &self.players
     }
 
+    pub fn victory_conditions(&self) -> &dyn VictoryCondition<G> {
+        &*self.victory_conditions
+    }
 }
 
 pub type Pieces<G> = FxHashMap<<G as BoardGeometryExt>::Tile, Piece<G>>;
