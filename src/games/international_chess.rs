@@ -1,5 +1,6 @@
 use std::num::NonZeroUsize;
 use lazy_static::lazy_static;
+use crate::victory_conditions::*;
 use crate::*;
 
 // TODO: Consider changing these to enums

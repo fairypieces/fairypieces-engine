@@ -5,12 +5,21 @@ use std::ops::Sub;
 use std::num::NonZeroUsize;
 use std::collections::{HashMap, VecDeque, BTreeSet, BTreeMap, HashSet, hash_map::Entry};
 use fxhash::{FxHashMap, FxHashSet};
-use dyn_clone::DynClone;
 use replace_with::replace_with_or_default;
 use hibitset::BitSet;
+use crate::victory_conditions::*;
+use crate::delta::*;
 use crate::*;
 
 pub type PlayerIndex = u8;
+
+#[derive(Copy, Clone, Debug)]
+pub enum PastTileError {
+    /// The tile from the requested move precedes the start of the game.
+    PrecedingStart,
+    /// The tile is not on the board.
+    MissingTile,
+}
 
 // TODO: Use an immutable list instead of `Vec` to improve cloning performance.
 //       Either wrap `initial_state` in an `Arc` or get rid of it completely, as
@@ -22,14 +31,6 @@ pub struct MoveLog<G: BoardGeometry> {
     /// A list of normalized deltas.
     /// Applying all deltas in the given order to `initial_state` produces `current_state`.
     pub(crate) moves: im::Vector<ReversibleGameStateDelta<G>>,
-}
-
-#[derive(Copy, Clone, Debug)]
-pub enum PastTileError {
-    /// The tile from the requested move precedes the start of the game.
-    PrecedingStart,
-    /// The tile is not on the board.
-    MissingTile,
 }
 
 impl<G: BoardGeometry> MoveLog<G> {
@@ -48,10 +49,10 @@ impl<G: BoardGeometry> MoveLog<G> {
         let previous_game_state = self.current_state.clone();
 
         self.moves.push_back(delta.clone());
-        replace_with_or_default(&mut self.current_state, |current_state| current_state.apply(delta.forward.clone()));
+        replace_with_or_default(&mut self.current_state, |current_state| current_state.apply(delta.forward().clone()));
 
         // Ensure all appended moves are reversible. Ensured using induction.
-        debug_assert_eq!(previous_game_state, self.current_state.clone().apply(delta.backward));
+        debug_assert_eq!(previous_game_state, self.current_state.clone().apply(delta.into_backward()));
 
         // Disabled condition that checks all recorded moves -- wasteful.
         // debug_assert!(self.initial_state == self.moves.iter().rev().fold(self.current_state.clone(), |state, mv| state.apply(mv.backward.clone())));
@@ -153,7 +154,7 @@ impl<G: BoardGeometry> Game<G> {
     }
 
     /// Clone the game with altered victory conditions.
-    fn clone_with_victory_conditions(&self, victory_conditions: Box<dyn VictoryCondition<G>>) -> Self {
+    pub(crate) fn clone_with_victory_conditions(&self, victory_conditions: Box<dyn VictoryCondition<G>>) -> Self {
         let mut result = self.clone();
         Arc::make_mut(&mut result.rules).victory_conditions = victory_conditions;
 
@@ -186,14 +187,14 @@ impl<G: BoardGeometry> Game<G> {
     }
 
     /// Appends a delta without checking whether that delta is available as a legal move.
-    fn append_delta_unchecked(&mut self, delta: ReversibleGameStateDelta<G>) {
+    pub(crate) fn append_delta_unchecked(&mut self, delta: ReversibleGameStateDelta<G>) {
         self.append_delta_unchecked_without_evaluation(delta);
         self.evaluate();
     }
 
     /// Appends a delta without checking whether that delta is available as a legal move.
     /// Does not evaluate the outcome of the game nor does it generate legal moves.
-    fn append_delta_unchecked_without_evaluation(&mut self, delta: ReversibleGameStateDelta<G>) {
+    pub(crate) fn append_delta_unchecked_without_evaluation(&mut self, delta: ReversibleGameStateDelta<G>) {
         self.move_log.append(delta);
     }
 
@@ -228,7 +229,7 @@ impl<G: BoardGeometry> Game<G> {
     }
 
     /// Appends a move without checking whether that move is legal (is an element of [`Game::available_moves`]).
-    fn append_unchecked(&mut self, mv: Move<G>) {
+    pub(crate) fn append_unchecked(&mut self, mv: Move<G>) {
         self.append_unchecked_without_evaluation(mv);
         self.evaluate();
     }
@@ -257,7 +258,7 @@ impl<G: BoardGeometry> Game<G> {
             let moves_played_since = self.move_log.moves.iter().rev().take(before_moves);
 
             for mv in moves_played_since {
-                if let Some(piece) = mv.backward.affected_pieces.get(&tile) {
+                if let Some(piece) = mv.backward().affected_pieces.get(&tile) {
                     return Ok(piece.as_ref());
                 }
             }
@@ -280,7 +281,7 @@ impl<G: BoardGeometry> Game<G> {
             let moves_played_since = self.move_log.moves.iter().rev().take(before_moves);
 
             for mv in moves_played_since {
-                if let Some(affected_flags) = mv.backward.affected_flags.get(&tile) {
+                if let Some(affected_flags) = mv.backward().affected_flags.get(&tile) {
                     if let Some(value) = affected_flags.get(&flag) {
                         return Ok(*value);
                     }
@@ -559,263 +560,6 @@ impl<G: BoardGeometry> Game<G> {
     }
 }
 
-/// The outcome of a finished [`Game`].
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Outcome {
-    /// The winner of the game has been decided.
-    Decisive {
-        winner: PlayerIndex,
-    },
-    /// The game resulted in a draw.
-    Draw,
-}
-
-/// [`VictoryCondition`]s evaluate the outcome of a game after every played move.
-/// They also decide which pseudo-legal moves are legal, or, in other words, rejects certain
-/// generated moves.
-pub trait VictoryCondition<G: BoardGeometry>: Send + Sync + Debug + DynClone {
-    /// Determines the outcome of a game at the current state.
-    /// Not to be called directly, use [`Game::get_outcome`] instead.
-    fn evaluate(&self, game: &Game<G>) -> Option<Outcome>;
-
-    /// Determines whether a pseudo-legal move is legal.
-    fn is_move_legal(&self, current_state: &Game<G>, mv: &ReversibleGameStateDelta<G>) -> bool;
-}
-
-dyn_clone::clone_trait_object!(<G> VictoryCondition<G> where G: BoardGeometry);
-
-/// A [`VictoryCondition`] with no possible victories and no illegal moves.
-/// The game continues until all but one players concede.
-#[derive(Debug, Clone)]
-pub struct NoVictoryCondition;
-
-impl<G: BoardGeometry> VictoryCondition<G> for NoVictoryCondition {
-    fn evaluate(&self, _game: &Game<G>) -> Option<Outcome> {
-        None
-    }
-
-    fn is_move_legal(&self, _current_state: &Game<G>, _mv: &ReversibleGameStateDelta<G>) -> bool {
-        true
-    }
-}
-
-/// A [`VictoryCondition`] which predicts an inevitable victory 2 turns ahead and makes
-/// moves which would result in a loss in the next turn illegal.
-///
-/// A combination of `PredictiveVictoryCondition` and `RoyalVictoryCondition` can provide
-/// victory conditions typical for international chess.
-#[derive(Debug, Clone)]
-pub struct PredictiveVictoryCondition<G: BoardGeometry, C: VictoryCondition<G>> {
-    inner: C,
-    __marker: PhantomData<G>,
-}
-
-impl<G, C> PredictiveVictoryCondition<G, C>
-where
-    G: BoardGeometry + Send + Sync + Debug + Clone,
-    C: Send + Sync + Debug + Clone + VictoryCondition<G>,
-{
-    pub fn new(inner: C) -> Self {
-        Self {
-            inner,
-            __marker: Default::default(),
-        }
-    }
-}
-
-impl<G, C> VictoryCondition<G> for PredictiveVictoryCondition<G, C>
-where
-    G: BoardGeometry + Send + Sync + Debug + Clone,
-    C: Send + Sync + Debug + Clone + VictoryCondition<G> + 'static,
-{
-    fn evaluate(&self, game: &Game<G>) -> Option<Outcome> {
-        if game.available_moves().moves().count() == 0 {
-            // TODO: stalemate detection
-            return Some(Outcome::Decisive {
-                winner: (game.move_log().current_state().current_player_index() + 1) % game.rules().players().get() as PlayerIndex,
-            });
-        }
-
-        self.inner.evaluate(game)
-    }
-
-    fn is_move_legal(&self, current_state: &Game<G>, mv: &ReversibleGameStateDelta<G>) -> bool {
-        let mut defending_game = current_state.clone_with_victory_conditions(Box::new(self.inner.clone()));
-
-        // Play the defending move of the current player.
-        defending_game.append_delta_unchecked(mv.clone());
-
-        // Find an attacking move that would decide the game.
-        for attacking_move in defending_game.available_moves().moves() {
-            let mut attacking_game = defending_game.clone();
-
-            attacking_game.append_unchecked(attacking_move.clone());
-
-            let outcome = attacking_game.get_outcome();
-
-            if let Some(Outcome::Decisive { winner }) = outcome {
-                if *winner != current_state.move_log().current_state().current_player_index() {
-                    // This defending move is invalid, because it can be countered by an attacking move
-                    // that decides the game.
-                    return false;
-                }
-            }
-        };
-
-        true
-    }
-}
-
-/// The type of [`RoyalVictoryCondition`].
-#[derive(Clone, Debug, Copy)]
-pub enum RoyalVictoryType {
-    /// A player loses the game if they lose **at least one** of their royal pieces.
-    Absolute,
-    /// A player loses the game if they lose **all** of their royal pieces.
-    Extinction,
-}
-
-#[derive(Clone, Debug, Copy)]
-enum Quantifier {
-    All,
-    Any,
-}
-
-/// A [`VictoryCondition`] which marks certain piece definitions (kinds of pieces) as _royal_,
-/// and then decides the loss of a player based upon the number of their _royal_ pieces alive.
-///
-/// See [`RoyalVictoryType`] for more information about how the loss is decided upon.
-#[derive(Clone, Debug)]
-pub struct RoyalVictoryCondition {
-    /// (Player, Piece Definition) -> Initial Count
-    initial_piece_count_per_player: FxHashMap<(u8, u16), usize>,
-    /// (Player, Piece Definition) -> Min Count
-    min_piece_count_per_player: FxHashMap<(u8, u16), usize>,
-    loss_when_insufficient_count_by: Quantifier,
-}
-
-impl RoyalVictoryCondition {
-    pub fn new<G: BoardGeometry>(ty: RoyalVictoryType, initial_state: &GameState<G>) -> Self {
-        let initial_piece_count_per_player = initial_state.pieces.values()
-            .map(|piece| (piece.owner(), piece.definition_index()))
-            .fold(HashMap::default(), |mut acc, key| {
-                match acc.entry(key) {
-                    Entry::Vacant(entry) => {
-                        entry.insert(1);
-                    },
-                    Entry::Occupied(ref mut entry) => {
-                        *entry.get_mut() += 1;
-                    },
-                }
-
-                acc
-            });
-
-        Self {
-            initial_piece_count_per_player,
-            min_piece_count_per_player: Default::default(),
-            loss_when_insufficient_count_by: match ty {
-                RoyalVictoryType::Absolute => Quantifier::Any,
-                RoyalVictoryType::Extinction => Quantifier::All,
-            },
-        }
-    }
-
-    pub fn with_min_piece_count(mut self, player_index: PlayerIndex, piece_definition_index: PieceDefinitionIndex, min_piece_count: usize) -> Self {
-        if min_piece_count > 0 {
-            self.min_piece_count_per_player.insert((player_index, piece_definition_index), min_piece_count);
-        } else {
-            self.min_piece_count_per_player.remove(&(player_index, piece_definition_index));
-        }
-
-        self
-    }
-
-    pub fn with_max_takes_of_piece(self, player_index: PlayerIndex, piece_definition_index: PieceDefinitionIndex, max_takes: usize) -> Self {
-        if let Some(initial_count) = self.initial_piece_count_per_player.get(&(player_index, piece_definition_index)).cloned() {
-            self.with_max_takes_of_piece(player_index, piece_definition_index, initial_count.saturating_sub(max_takes))
-        } else {
-            self
-        }
-    }
-}
-
-impl<G: BoardGeometry> VictoryCondition<G> for RoyalVictoryCondition {
-    fn evaluate(&self, game: &Game<G>) -> Option<Outcome> {
-        let state = game.move_log().current_state();
-        let rules = game.rules();
-        // Initialize piece counts with all piece definitions and counts of 0
-        let piece_counts_per_player = (0..game.rules().piece_set().definitions().len()).into_iter()
-            .flat_map(|definition_index| {
-                (0..game.rules().players().get()).into_iter()
-                    .map(move |player_index| ((player_index as PlayerIndex, definition_index as PieceDefinitionIndex), 0))
-            }).collect::<FxHashMap<(PlayerIndex, PieceDefinitionIndex), usize>>();
-        let piece_counts_per_player = state.pieces.values()
-            .map(|piece| (piece.owner(), piece.definition_index()))
-            .fold(piece_counts_per_player, |mut acc, key| {
-                *acc.get_mut(&key).unwrap() += 1;
-
-                acc
-            });
-        let initial_player_evaluation = match self.loss_when_insufficient_count_by {
-            Quantifier::All => true,
-            Quantifier::Any => false,
-        };
-        let initial_player_evaluations = (0..rules.players().get()).into_iter()
-            .map(|player| (player as PlayerIndex, initial_player_evaluation))
-            .collect::<FxHashMap<PlayerIndex, bool>>();
-
-        let players_alive: Vec<PlayerIndex> = self.min_piece_count_per_player.iter()
-            .map(move |(&(player, piece), min_count)| {
-                let insufficient_count = piece_counts_per_player.get(&(player, piece))
-                    .map(|count| *count < *min_count)
-                    .unwrap_or(false);
-
-                (player, insufficient_count)
-            })
-            .fold(initial_player_evaluations, |mut acc, (player, insufficient_count)| {
-                let loss = acc.get_mut(&player).unwrap();
-
-                match self.loss_when_insufficient_count_by {
-                    Quantifier::All => *loss &= insufficient_count,
-                    Quantifier::Any => *loss |= insufficient_count,
-                }
-
-                acc
-            })
-            .into_iter()
-            .filter(|(_, loss)| !loss)
-            .map(|(player, _)| player)
-            .collect();
-
-        if players_alive.is_empty() {
-            Some(Outcome::Draw)
-        } else if players_alive.len() == 1 {
-            Some(Outcome::Decisive {
-                winner: *players_alive.first().unwrap(),
-            })
-        } else {
-            None
-        }
-    }
-
-    fn is_move_legal(&self, current_state: &Game<G>, mv: &ReversibleGameStateDelta<G>) -> bool {
-        let current_player = current_state.move_log().current_state().current_player_index();
-        let mut game = current_state.clone();
-
-        game.append_delta_unchecked_without_evaluation(mv.clone());
-
-        // Do not let the player make a move that result in them lose the game.
-        if let Some(Outcome::Decisive { winner }) = game.get_outcome() {
-            if *winner != current_player {
-                return false;
-            }
-        }
-
-        true
-    }
-}
-
 /// Game rules define the constraints of the game and the victory conditions.
 /// Game rules do not change throughout a game.
 #[derive(Debug, Clone)]
@@ -962,263 +706,6 @@ impl<'a, G: BoardGeometry> Sub for &'a GameState<G> {
 
         // let set_flags = self.flags.map & !rhs.flags.map;
         delta
-    }
-}
-
-/// A move is made up of a normalized state delta and a final tile which is used for selecting this
-/// move in UI.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct Move<G: BoardGeometry> {
-    delta: ReversibleGameStateDelta<G>,
-    final_tile: <G as BoardGeometryExt>::Tile,
-}
-
-impl<G: BoardGeometry> Move<G> {
-    pub fn from(
-        original_state: &GameState<G>,
-        board: &Board<G>,
-        delta: GameStateDelta<G>,
-        final_tile: <G as BoardGeometryExt>::Tile,
-        move_type: MoveType,
-    ) -> Self {
-        Self {
-            delta: delta.normalize(original_state, board, move_type),
-            final_tile,
-        }
-    }
-
-    pub fn into_delta(self) -> ReversibleGameStateDelta<G> {
-        self.delta
-    }
-
-    pub fn delta(&self) -> &ReversibleGameStateDelta<G> {
-        &self.delta
-    }
-
-    pub fn final_tile(&self) -> &<G as BoardGeometryExt>::Tile {
-        &self.final_tile
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct MoveType {
-    pub definition: PieceDefinitionIndex,
-    pub final_state: usize,
-    pub visited_marked_states: im::OrdSet<usize>,
-}
-
-impl MoveType {
-    pub fn has_visited_marked_state(&self, state_index: usize) -> bool {
-        self.visited_marked_states.contains(&state_index)
-    }
-}
-
-/// A [`GameStateDelta`], which is reversible for the [`GameState`] it was created for using
-/// [`GameStateDelta::normalize`].
-/// For that game state, the following equality holds:
-/// `state == delta.backward().apply_to(delta.forward().apply_to(state))`
-///
-/// Inner fields not accessible through a mutable reference to ensure consistency.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct ReversibleGameStateDelta<G: BoardGeometry> {
-    forward: GameStateDelta<G>,
-    backward: GameStateDelta<G>,
-    move_type: MoveType,
-}
-
-impl<G: BoardGeometry> ReversibleGameStateDelta<G> {
-    pub fn into_forward(self) -> GameStateDelta<G> {
-        self.forward
-    }
-
-    pub fn move_type(&self) -> &MoveType {
-        &self.move_type
-    }
-
-    pub fn forward(&self) -> &GameStateDelta<G> {
-        &self.forward
-    }
-
-    pub fn backward(&self) -> &GameStateDelta<G> {
-        &self.backward
-    }
-}
-
-/// An operation applicable to a [`GameState`], producing an altered [`GameState`].
-#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct GameStateDelta<G: BoardGeometry> {
-    affected_pieces: BTreeMap<<G as BoardGeometryExt>::Tile, Option<Piece<G>>>,
-    affected_flags: BTreeMap<<G as BoardGeometryExt>::Tile, BTreeMap<u32, bool>>,
-    // TODO: Reconsider whether this is necessary:
-    next_player: PlayerIndex,
-}
-
-impl<G: BoardGeometry> GameStateDelta<G> {
-    pub fn with_next_player(next_player: PlayerIndex) -> Self {
-        Self {
-            affected_pieces: Default::default(),
-            affected_flags: Default::default(),
-            next_player,
-        }
-    }
-
-    pub fn set(&mut self, tile: <G as BoardGeometryExt>::Tile, mut piece: Option<Piece<G>>, move_index: usize) {
-        if let Some(piece) = piece.as_mut() {
-            piece.push_affecting_move(move_index);
-        }
-
-        self.affected_pieces.insert(tile, piece);
-    }
-
-    pub fn set_initial(&mut self, tile: <G as BoardGeometryExt>::Tile, mut piece: Option<Piece<G>>) {
-        if let Some(piece) = piece.as_mut() {
-            piece.make_initial();
-        }
-
-        self.affected_pieces.insert(tile, piece);
-    }
-
-    pub fn unset(&mut self, tile: <G as BoardGeometryExt>::Tile) {
-        self.affected_pieces.remove(&tile);
-    }
-
-    pub fn next_player(&self) -> PlayerIndex {
-        self.next_player
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item=(&'_ <G as BoardGeometryExt>::Tile, &'_ Option<Piece<G>>)> {
-        self.affected_pieces.iter()
-    }
-
-    /// Returns `None` if `tile` is not affected.
-    /// Returns `Some(None)` if `tile` is emptied.
-    /// Returns `Some(Some(piece))` if `piece` is placed on `tile`.
-    pub fn get(&self, tile: <G as BoardGeometryExt>::Tile) -> Option<Option<&Piece<G>>> {
-        self.affected_pieces.get(&tile).map(|piece| piece.as_ref())
-    }
-
-    /// Returns `true` if and only if `rhs` affects all pieces and tiles that `self` affects, in
-    /// the exact same way.
-    ///
-    /// In other words, returns `true` if `rhs` is `lhs` and something extra.
-    pub fn is_part_of(&self, rhs: &GameStateDelta<G>) -> bool {
-        true
-            && self.next_player == rhs.next_player
-            && self.affected_pieces.len() <= rhs.affected_pieces.len()
-            && self.affected_flags.len() <= rhs.affected_flags.len()
-            && self.affected_pieces.iter().all(|(tile, piece)| {
-                rhs.get(*tile) == Some(piece.as_ref())
-            })
-            && self.affected_flags.iter().all(|(tile, lhs_flags)| {
-                if let Some(rhs_flags) = rhs.affected_flags.get(tile) {
-                    lhs_flags.iter().all(|(flag, value)| {
-                        rhs_flags.get(flag) == Some(value)
-                    })
-                } else {
-                    false
-                }
-            })
-    }
-
-    /// Removes ineffective actions.
-    pub fn normalize(self, state: &GameState<G>, board: &Board<G>, move_type: MoveType) -> ReversibleGameStateDelta<G> {
-        #[cfg(debug_assertions)]
-        let self_clone = self.clone();
-
-        let mut result = ReversibleGameStateDelta {
-            forward: self,
-            backward: GameStateDelta::with_next_player(state.current_player_index()),
-            move_type,
-        };
-
-        // Keep altered pieces only.
-        //
-        // Note: Using `drain` on a `BTreeMap` is only efficient if the number of removed elements is
-        // relatively low. In other cases, it is best to create a new tree from an iterator of
-        // key-value pairs.
-        result.forward.affected_pieces.retain(|tile, forward_piece| {
-            if let Some(current_tile) = state.tile(board, *tile) {
-                current_tile.get_piece() != forward_piece.as_ref()
-            } else {
-                false
-            }
-        });
-
-        result.backward.affected_pieces = result.forward.affected_pieces.keys().map(|tile| {
-            // Unwrap Safety: Only pieces of existing tiles were retained in `forward`.
-            let backward_tile = state.tile(board, *tile).unwrap();
-            let backward_piece = backward_tile.get_piece().cloned();
-
-            (*tile, backward_piece)
-        }).collect();
-
-        // Keep altered flags only.
-        result.forward.affected_flags.retain(|tile, forward_flags| {
-            if let Some(current_tile) = state.tile(board, *tile) {
-                if let Some(current_flags) = current_tile.get_flags() {
-                    forward_flags.retain(|flag, value| {
-                        current_flags.contains(*flag) != *value
-                    });
-
-                    !forward_flags.is_empty()
-                } else {
-                    false
-                }
-            } else {
-                false
-            }
-        });
-
-        result.backward.affected_flags = result.forward.affected_flags.clone();
-
-        result.backward.affected_flags.values_mut().for_each(|backward_flags| {
-            for value in backward_flags.values_mut() {
-                *value ^= true;
-            }
-        });
-
-        // In debug mode, verify the validity of created `ReversibleGameStateDelta`.
-        #[cfg(debug_assertions)]
-        debug_assert_eq!(result, ReversibleGameStateDelta {
-            forward: &state.clone().apply(self_clone.clone()) - state,
-            backward: state - &state.clone().apply(self_clone),
-            move_type: result.move_type.clone(),
-        });
-
-        result
-    }
-
-    pub fn apply_to(self, mut state: GameState<G>) -> GameState<G> {
-        for (tile, piece_or_none) in self.affected_pieces {
-            if let Some(piece) = piece_or_none {
-                state.pieces.insert(tile, piece);
-            } else {
-                state.pieces.remove(&tile);
-            }
-        }
-
-        for (tile, affected_flags) in self.affected_flags {
-            for (flag, value) in affected_flags {
-                state.flags.set_flag(tile, flag, value);
-            }
-        }
-
-        state.current_player_index = self.next_player;
-
-        state
-    }
-
-    pub fn subset_of(&self, rhs: &Self) -> bool {
-        self.next_player == rhs.next_player
-            && self.affected_pieces.iter().all(|(tile, piece)| {
-                rhs.affected_pieces.get(tile)
-                    .map(|expected_piece| piece == expected_piece)
-                    .unwrap_or(false)
-            })
-    }
-
-    pub fn superset_of(&self, rhs: &Self) -> bool {
-        rhs.subset_of(self)
     }
 }
 

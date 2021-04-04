@@ -17,6 +17,8 @@ use game::*;
 pub mod math;
 pub mod board;
 pub mod piece;
+pub mod delta;
+pub mod victory_conditions;
 pub mod game;
 pub mod games;
 

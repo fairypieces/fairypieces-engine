@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 use crate::Game;
-use crate::game::{PlayerIndex, Move};
+use crate::game::PlayerIndex;
 use crate::math::*;
 use crate::board::*;
 
