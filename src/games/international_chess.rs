@@ -132,8 +132,8 @@ lazy_static! {
                 // Advance by 1 tile
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [0, 1].into() },
-                        ConditionEnum::not(ConditionEnum::PiecePresent { before_moves: 0, tile: [0, 1].into() }),
+                        ConditionEnum::TilePresent { tile: [0, 1].into() },
+                        ConditionEnum::not(ConditionEnum::PiecePresent { tile: [0, 1].into() }),
                     ]),
                     actions: Default::default(),
                     move_choices: vec![[0, 1].into()].into_iter().collect(),
@@ -141,11 +141,11 @@ lazy_static! {
                 // Advance by 2 tiles
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
-                        ConditionEnum::PieceInitial { before_moves: 0, tile: [0, 0].into() },
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [0, 1].into() },
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [0, 2].into() },
-                        ConditionEnum::not(ConditionEnum::PiecePresent { before_moves: 0, tile: [0, 1].into() }),
-                        ConditionEnum::not(ConditionEnum::PiecePresent { before_moves: 0, tile: [0, 2].into() }),
+                        ConditionEnum::PieceInitial { tile: [0, 0].into() },
+                        ConditionEnum::TilePresent { tile: [0, 1].into() },
+                        ConditionEnum::TilePresent { tile: [0, 2].into() },
+                        ConditionEnum::not(ConditionEnum::PiecePresent { tile: [0, 1].into() }),
+                        ConditionEnum::not(ConditionEnum::PiecePresent { tile: [0, 2].into() }),
                     ]),
                     actions: Default::default(),
                     move_choices: vec![[0, 2].into()].into_iter().collect(),
@@ -153,9 +153,9 @@ lazy_static! {
                 // Capture diagonally
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [1, 1].into() },
-                        ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 1].into() },
-                        ConditionEnum::PieceControlledByEnemy { before_moves: 0, tile: [1, 1].into() },
+                        ConditionEnum::TilePresent { tile: [1, 1].into() },
+                        ConditionEnum::PiecePresent { tile: [1, 1].into() },
+                        ConditionEnum::PieceControlledByEnemy { tile: [1, 1].into() },
                     ]),
                     actions: Default::default(),
                     move_choices: vec![[1, 1].into()].into_iter().collect(),
@@ -170,11 +170,11 @@ lazy_static! {
                         // The preceding move was a pawn's 2-tile advancement move.
                         ConditionEnum::MoveGeneratedByVisitingMarkedState { past_move: 1, state_index: 2 },
                         // There is a tile right of the pawn.
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [1, 0].into() },
+                        ConditionEnum::TilePresent { tile: [1, 0].into() },
                         // There is a piece right of the pawn.
-                        ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 0].into() },
+                        ConditionEnum::PiecePresent { tile: [1, 0].into() },
                         // That piece is an enemy piece.
-                        ConditionEnum::PieceControlledByEnemy { before_moves: 0, tile: [1, 0].into() },
+                        ConditionEnum::PieceControlledByEnemy { tile: [1, 0].into() },
                         // That piece is affected by the pawn's 2-tile advancement move, meaning it
                         // was the pawn, because the move does not affect any other piece.
                         //
@@ -203,24 +203,24 @@ lazy_static! {
                     condition: ConditionEnum::not(ConditionEnum::any(vec![
                         ConditionEnum::all(vec![
                             ConditionEnum::PieceControlledBy {
-                                before_moves: 0,
+                                
                                 tile: [0, 0].into(),
                                 player: PLAYER_WHITE,
                             },
                             ConditionEnum::TileFlagPresent {
-                                before_moves: 0,
+                                
                                 tile: [0, 0].into(),
                                 flag: TILE_FLAG_PROMOTION_WHITE,
                             },
                         ]),
                         ConditionEnum::all(vec![
                             ConditionEnum::PieceControlledBy {
-                                before_moves: 0,
+                                
                                 tile: [0, 0].into(),
                                 player: PLAYER_BLACK,
                             },
                             ConditionEnum::TileFlagPresent {
-                                before_moves: 0,
+                                
                                 tile: [0, 0].into(),
                                 flag: TILE_FLAG_PROMOTION_BLACK,
                             },
@@ -234,24 +234,24 @@ lazy_static! {
                     condition: ConditionEnum::any(vec![
                         ConditionEnum::all(vec![
                             ConditionEnum::PieceControlledBy {
-                                before_moves: 0,
+                                
                                 tile: [0, 0].into(),
                                 player: PLAYER_WHITE,
                             },
                             ConditionEnum::TileFlagPresent {
-                                before_moves: 0,
+                                
                                 tile: [0, 0].into(),
                                 flag: TILE_FLAG_PROMOTION_WHITE,
                             },
                         ]),
                         ConditionEnum::all(vec![
                             ConditionEnum::PieceControlledBy {
-                                before_moves: 0,
+                                
                                 tile: [0, 0].into(),
                                 player: PLAYER_BLACK,
                             },
                             ConditionEnum::TileFlagPresent {
-                                before_moves: 0,
+                                
                                 tile: [0, 0].into(),
                                 flag: TILE_FLAG_PROMOTION_BLACK,
                             },
@@ -317,8 +317,8 @@ lazy_static! {
                 // Move to the right 0 or more times
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [0, 1].into() },
-                        ConditionEnum::not(ConditionEnum::PiecePresent { before_moves: 0, tile: [0, 1].into() }),
+                        ConditionEnum::TilePresent { tile: [0, 1].into() },
+                        ConditionEnum::not(ConditionEnum::PiecePresent { tile: [0, 1].into() }),
                     ]),
                     actions: Default::default(),
                     move_choices: vec![[0, 1].into()].into_iter().collect(),
@@ -326,9 +326,9 @@ lazy_static! {
                 // Capture a move to the right
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [0, 1].into() },
-                        ConditionEnum::PiecePresent { before_moves: 0, tile: [0, 1].into() },
-                        ConditionEnum::PieceControlledByEnemy { before_moves: 0, tile: [0, 1].into() },
+                        ConditionEnum::TilePresent { tile: [0, 1].into() },
+                        ConditionEnum::PiecePresent { tile: [0, 1].into() },
+                        ConditionEnum::PieceControlledByEnemy { tile: [0, 1].into() },
                     ]),
                     actions: Default::default(),
                     move_choices: vec![[0, 1].into()].into_iter().collect(),
@@ -348,8 +348,8 @@ lazy_static! {
                 // Move or capture with a knight
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [2, 1].into() },
-                        ConditionEnum::PieceControlledByEnemy { before_moves: 0, tile: [2, 1].into() },
+                        ConditionEnum::TilePresent { tile: [2, 1].into() },
+                        ConditionEnum::PieceControlledByEnemy { tile: [2, 1].into() },
                     ]),
                     actions: Default::default(),
                     move_choices: vec![[2, 1].into()].into_iter().collect(),
@@ -362,8 +362,8 @@ lazy_static! {
                 // Move to the top right 0 or more times
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [1, 1].into() },
-                        ConditionEnum::not(ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 1].into() }),
+                        ConditionEnum::TilePresent { tile: [1, 1].into() },
+                        ConditionEnum::not(ConditionEnum::PiecePresent { tile: [1, 1].into() }),
                     ]),
                     actions: Default::default(),
                     move_choices: vec![[1, 1].into()].into_iter().collect(),
@@ -371,9 +371,9 @@ lazy_static! {
                 // Capture a move to the top right
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [1, 1].into() },
-                        ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 1].into() },
-                        ConditionEnum::PieceControlledByEnemy { before_moves: 0, tile: [1, 1].into() },
+                        ConditionEnum::TilePresent { tile: [1, 1].into() },
+                        ConditionEnum::PiecePresent { tile: [1, 1].into() },
+                        ConditionEnum::PieceControlledByEnemy { tile: [1, 1].into() },
                     ]),
                     actions: Default::default(),
                     move_choices: vec![[1, 1].into()].into_iter().collect(),
@@ -386,8 +386,8 @@ lazy_static! {
                 // Move upwards 0 or more times
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [0, 1].into() },
-                        ConditionEnum::not(ConditionEnum::PiecePresent { before_moves: 0, tile: [0, 1].into() }),
+                        ConditionEnum::TilePresent { tile: [0, 1].into() },
+                        ConditionEnum::not(ConditionEnum::PiecePresent { tile: [0, 1].into() }),
                     ]),
                     actions: Default::default(),
                     move_choices: vec![[0, 1].into()].into_iter().collect(),
@@ -395,9 +395,9 @@ lazy_static! {
                 // Capture upwards
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [0, 1].into() },
-                        ConditionEnum::PiecePresent { before_moves: 0, tile: [0, 1].into() },
-                        ConditionEnum::PieceControlledByEnemy { before_moves: 0, tile: [0, 1].into() },
+                        ConditionEnum::TilePresent { tile: [0, 1].into() },
+                        ConditionEnum::PiecePresent { tile: [0, 1].into() },
+                        ConditionEnum::PieceControlledByEnemy { tile: [0, 1].into() },
                     ]),
                     actions: Default::default(),
                     move_choices: vec![[0, 1].into()].into_iter().collect(),
@@ -405,8 +405,8 @@ lazy_static! {
                 // Move to the top right 0 or more times
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [1, 1].into() },
-                        ConditionEnum::not(ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 1].into() }),
+                        ConditionEnum::TilePresent { tile: [1, 1].into() },
+                        ConditionEnum::not(ConditionEnum::PiecePresent { tile: [1, 1].into() }),
                     ]),
                     actions: Default::default(),
                     move_choices: vec![[1, 1].into()].into_iter().collect(),
@@ -414,9 +414,9 @@ lazy_static! {
                 // Capture to the top right
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [1, 1].into() },
-                        ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 1].into() },
-                        ConditionEnum::PieceControlledByEnemy { before_moves: 0, tile: [1, 1].into() },
+                        ConditionEnum::TilePresent { tile: [1, 1].into() },
+                        ConditionEnum::PiecePresent { tile: [1, 1].into() },
+                        ConditionEnum::PieceControlledByEnemy { tile: [1, 1].into() },
                     ]),
                     actions: Default::default(),
                     move_choices: vec![[1, 1].into()].into_iter().collect(),
@@ -429,8 +429,8 @@ lazy_static! {
                 // Move or capture to the right
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [0, 1].into() },
-                        ConditionEnum::PieceControlledByEnemy { before_moves: 0, tile: [0, 1].into() },
+                        ConditionEnum::TilePresent { tile: [0, 1].into() },
+                        ConditionEnum::PieceControlledByEnemy { tile: [0, 1].into() },
                     ]),
                     actions: Default::default(),
                     move_choices: vec![[0, 1].into()].into_iter().collect(),
@@ -438,8 +438,8 @@ lazy_static! {
                 // Move or capture to the top right
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [1, 1].into() },
-                        ConditionEnum::PieceControlledByEnemy { before_moves: 0, tile: [1, 1].into() },
+                        ConditionEnum::TilePresent { tile: [1, 1].into() },
+                        ConditionEnum::PieceControlledByEnemy { tile: [1, 1].into() },
                     ]),
                     actions: Default::default(),
                     move_choices: vec![[1, 1].into()].into_iter().collect(),
@@ -465,22 +465,22 @@ lazy_static! {
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
                         // Ensure tiles are present up to the rook
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [1, 0].into() },
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [2, 0].into() },
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [3, 0].into() },
+                        ConditionEnum::TilePresent { tile: [1, 0].into() },
+                        ConditionEnum::TilePresent { tile: [2, 0].into() },
+                        ConditionEnum::TilePresent { tile: [3, 0].into() },
                         // Ensure no pieces are inbetween the king and the rook
-                        ConditionEnum::not(ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 0].into() }),
-                        ConditionEnum::not(ConditionEnum::PiecePresent { before_moves: 0, tile: [2, 0].into() }),
+                        ConditionEnum::not(ConditionEnum::PiecePresent { tile: [1, 0].into() }),
+                        ConditionEnum::not(ConditionEnum::PiecePresent { tile: [2, 0].into() }),
                         // Ensure a piece is on the H file
-                        ConditionEnum::PiecePresent { before_moves: 0, tile: [3, 0].into() },
+                        ConditionEnum::PiecePresent { tile: [3, 0].into() },
                         // Ensure that piece is a rook
-                        ConditionEnum::PieceTypeIs { before_moves: 0, tile: [3, 0].into(), definition_index: PIECE_ROOK },
+                        ConditionEnum::PieceTypeIs { tile: [3, 0].into(), definition_index: PIECE_ROOK },
                         // Ensure that piece is allied
-                        ConditionEnum::PieceControlledByAlly { before_moves: 0, tile: [3, 0].into() },
+                        ConditionEnum::PieceControlledByAlly { tile: [3, 0].into() },
                         // Ensure both the rook and the king have not been moved or affected by a
                         // move prior to castling
-                        ConditionEnum::PieceInitial { before_moves: 0, tile: [0, 0].into() },
-                        ConditionEnum::PieceInitial { before_moves: 0, tile: [3, 0].into() },
+                        ConditionEnum::PieceInitial { tile: [0, 0].into() },
+                        ConditionEnum::PieceInitial { tile: [3, 0].into() },
                         // Ensure the king is not currently in check
                         ConditionEnum::UnfinishedMoveLegal,
                     ]),
@@ -513,24 +513,24 @@ lazy_static! {
                 .with_state(StateUnvalidated::new(Action::Move {
                     condition: ConditionEnum::all(vec![
                         // Ensure tiles are present up to the rook
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [1, 0].into() },
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [2, 0].into() },
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [3, 0].into() },
-                        ConditionEnum::TilePresent { before_moves: 0, tile: [4, 0].into() },
+                        ConditionEnum::TilePresent { tile: [1, 0].into() },
+                        ConditionEnum::TilePresent { tile: [2, 0].into() },
+                        ConditionEnum::TilePresent { tile: [3, 0].into() },
+                        ConditionEnum::TilePresent { tile: [4, 0].into() },
                         // Ensure no pieces are inbetween the king and the rook
-                        ConditionEnum::not(ConditionEnum::PiecePresent { before_moves: 0, tile: [1, 0].into() }),
-                        ConditionEnum::not(ConditionEnum::PiecePresent { before_moves: 0, tile: [2, 0].into() }),
-                        ConditionEnum::not(ConditionEnum::PiecePresent { before_moves: 0, tile: [3, 0].into() }),
+                        ConditionEnum::not(ConditionEnum::PiecePresent { tile: [1, 0].into() }),
+                        ConditionEnum::not(ConditionEnum::PiecePresent { tile: [2, 0].into() }),
+                        ConditionEnum::not(ConditionEnum::PiecePresent { tile: [3, 0].into() }),
                         // Ensure a piece is on the A file
-                        ConditionEnum::PiecePresent { before_moves: 0, tile: [4, 0].into() },
+                        ConditionEnum::PiecePresent { tile: [4, 0].into() },
                         // Ensure that piece is a rook
-                        ConditionEnum::PieceTypeIs { before_moves: 0, tile: [4, 0].into(), definition_index: PIECE_ROOK },
+                        ConditionEnum::PieceTypeIs { tile: [4, 0].into(), definition_index: PIECE_ROOK },
                         // Ensure that piece is allied
-                        ConditionEnum::PieceControlledByAlly { before_moves: 0, tile: [4, 0].into() },
+                        ConditionEnum::PieceControlledByAlly { tile: [4, 0].into() },
                         // Ensure both the rook and the king have not been moved or affected by a
                         // move prior to castling
-                        ConditionEnum::PieceInitial { before_moves: 0, tile: [0, 0].into() },
-                        ConditionEnum::PieceInitial { before_moves: 0, tile: [4, 0].into() },
+                        ConditionEnum::PieceInitial { tile: [0, 0].into() },
+                        ConditionEnum::PieceInitial { tile: [4, 0].into() },
                         // Ensure the king is not currently in check
                         ConditionEnum::UnfinishedMoveLegal,
                     ]),

@@ -244,54 +244,6 @@ impl<G: BoardGeometry> Game<G> {
         self.move_log.append(mv.delta);
     }
 
-    /// Returns the piece at tile `tile` on the board `before_moves` moves ago.
-    pub(crate) fn past_tile_piece(&self, before_moves: usize, tile: <G as BoardGeometryExt>::Tile) -> Result<Option<&Piece<G>>, PastTileError> {
-        if before_moves > self.move_log.moves.len() {
-            return Err(PastTileError::PrecedingStart);
-        }
-
-        if !self.rules.board.tiles.contains(tile) {
-            return Err(PastTileError::MissingTile);
-        }
-
-        if before_moves > 0 {
-            let moves_played_since = self.move_log.moves.iter().rev().take(before_moves);
-
-            for mv in moves_played_since {
-                if let Some(piece) = mv.backward().affected_pieces.get(&tile) {
-                    return Ok(piece.as_ref());
-                }
-            }
-        }
-
-        Ok(self.move_log.current_state.pieces.get(&tile))
-    }
-
-    /// Returns whether the flag `flag` was set at tile `tile` on the board `before_moves` moves ago.
-    pub(crate) fn past_tile_flag(&self, before_moves: usize, tile: <G as BoardGeometryExt>::Tile, flag: u32) -> Result<bool, PastTileError> {
-        if before_moves > self.move_log.moves.len() {
-            return Err(PastTileError::PrecedingStart);
-        }
-
-        if !self.rules.board.tiles.contains(tile) {
-            return Err(PastTileError::MissingTile);
-        }
-
-        if before_moves > 0 {
-            let moves_played_since = self.move_log.moves.iter().rev().take(before_moves);
-
-            for mv in moves_played_since {
-                if let Some(affected_flags) = mv.backward().affected_flags.get(&tile) {
-                    if let Some(value) = affected_flags.get(&flag) {
-                        return Ok(*value);
-                    }
-                }
-            }
-        }
-
-        Ok(self.move_log.current_state.flags.contains_flag(tile, flag))
-    }
-
     pub fn evaluate(&mut self) {
         self.evaluate_available_moves();
         self.evaluate_outcome();
