@@ -279,10 +279,49 @@ impl<G: BoardGeometry> Game<G, NotEvaluated> {
         let move_index = self.move_log().len();
         let mut moves_from = self.pseudo_legal_moves.as_ref().unwrap().as_ref().clone();
 
-        for move_set in moves_from.values_mut() {
-            move_set.retain(|mv| {
-                self.rules().victory_conditions.is_move_legal(self, mv.delta())
-            });
+        #[cfg(feature = "concurrency")]
+        {
+            use rayon::prelude::*;
+
+            moves_from = moves_from.into_par_iter()
+                .map(|(tile, mut move_set)| {
+                    move_set = move_set.into_par_iter()
+                        .filter(|mv| {
+                            self.rules().victory_conditions.is_move_legal(self, mv.delta())
+                        })
+                        .map(|mv| {
+                            let mut moves = FxHashSet::default();
+                            moves.insert(mv);
+                            moves
+                        })
+                        .reduce(
+                            || Default::default(),
+                            |mut lhs, rhs| {
+                                lhs.extend(rhs);
+                                lhs
+                            },
+                        );
+
+                    let mut moves_from = FxHashMap::default();
+                    moves_from.insert(tile, move_set);
+                    moves_from
+                })
+                .reduce(
+                    || FxHashMap::default(),
+                    |mut lhs, rhs| {
+                        lhs.extend(rhs);
+                        lhs
+                    },
+                );
+        }
+
+        #[cfg(not(feature = "concurrency"))]
+        {
+            for move_set in moves_from.values_mut() {
+                move_set.retain(|mv| {
+                    self.rules().victory_conditions.is_move_legal(self, mv.delta())
+                });
+            }
         }
 
         AvailableMoves::from(moves_from, move_index)
@@ -294,6 +333,47 @@ impl<G: BoardGeometry> Game<G, NotEvaluated> {
         let mut moves_from: PseudoLegalMoves<G> = Default::default();
 
         let current_player = self.move_log.current_state.current_player_index();
+
+        // A parallel implementation, but probably not worth the overhead.
+        //
+        // let (moves_from, generated_moves) = self.move_log.current_state.pieces
+        //     .par_iter()
+        //     .filter(|(tile, piece)| piece.owner == current_player)
+        //     .map(|(tile, piece)| {
+        //         let mut moves_from = PseudoLegalMoves::<G>::default();
+        //         let mut generated_moves = Vec::new();
+
+        //         if let Some(cached_moves) = self.move_cache.get_cached_moves_from(*tile) {
+        //             #[cfg(debug_assertions)]
+        //             if let Ok(Some(generated_moves)) = self.generate_pseudo_legal_moves_from_tile(*tile) {
+        //                 if &generated_moves != cached_moves {
+        //                     panic!("Cached move discrepancy #{mv} from tile {tile:?}:\n\tcached:    {cached_moves:?}\n\tgenerated: {generated_moves:?}", mv=self.move_log().len());
+        //                 }
+        //             }
+
+        //             moves_from.insert(*tile, cached_moves.moves.clone());
+        //             // available_moves.extend(*tile, cached_moves);
+        //         } else if let Ok(Some(current_generated_moves)) = self.generate_pseudo_legal_moves_from_tile(*tile) {
+        //             moves_from.insert(*tile, current_generated_moves.moves.clone());
+        //             // available_moves.extend(*tile, &generated_moves);
+        //             generated_moves.push((*tile, current_generated_moves));
+        //         }
+
+        //         (moves_from, generated_moves)
+        //     })
+        //     .reduce(
+        //         || (PseudoLegalMoves::<G>::default(), Vec::new()),
+        //         |(mut lhs_moves, mut lhs_generated_moves), (rhs_moves, rhs_generated_moves)| {
+        //             lhs_moves.extend(rhs_moves);
+        //             lhs_generated_moves.extend(rhs_generated_moves);
+
+        //             (lhs_moves, lhs_generated_moves)
+        //         }
+        //     );
+
+        // for (tile, generated_moves) in generated_moves {
+        //     self.move_cache.cache_moves(tile, generated_moves);
+        // }
 
         for (tile, piece) in &self.move_log.current_state.pieces {
             if piece.owner == current_player {
