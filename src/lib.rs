@@ -128,9 +128,9 @@ mod tests {
             (D1, H5),
             (E7, E6),
             (F1, A6),
-            (F7, F6),
-            (G1, F3),
             (G7, G6),
+            (G1, F3),
+            (H7, H6),
         ];
         let final_move = E1;
 

@@ -26,14 +26,14 @@ pub trait VictoryCondition<G: BoardGeometry>: Send + Sync + Debug + DynClone {
     fn evaluate(&self, game: &Game<G>) -> Option<Outcome>;
 
     /// Determines whether a pseudo-legal move is legal.
-    fn is_move_legal(&self, current_state: &Game<G>, mv: &ReversibleGameStateDelta<G>) -> bool;
+    fn is_move_legal(&self, game: &Game<G>, mv: &ReversibleGameStateDelta<G>) -> bool;
 }
 
 dyn_clone::clone_trait_object!(<G> VictoryCondition<G> where G: BoardGeometry);
 
 /// A [`VictoryCondition`] with no possible victories and no illegal moves.
 /// The game continues until all but one players concede.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct NoVictoryCondition;
 
 impl<G: BoardGeometry> VictoryCondition<G> for NoVictoryCondition {
@@ -41,7 +41,7 @@ impl<G: BoardGeometry> VictoryCondition<G> for NoVictoryCondition {
         None
     }
 
-    fn is_move_legal(&self, _current_state: &Game<G>, _mv: &ReversibleGameStateDelta<G>) -> bool {
+    fn is_move_legal(&self, _game: &Game<G>, _mv: &ReversibleGameStateDelta<G>) -> bool {
         true
     }
 }
@@ -86,8 +86,8 @@ where
         self.inner.evaluate(game)
     }
 
-    fn is_move_legal(&self, current_state: &Game<G>, mv: &ReversibleGameStateDelta<G>) -> bool {
-        let mut defending_game = current_state.clone_with_victory_conditions(Box::new(self.inner.clone()));
+    fn is_move_legal(&self, game: &Game<G>, mv: &ReversibleGameStateDelta<G>) -> bool {
+        let mut defending_game = game.clone_with_victory_conditions(Box::new(self.inner.clone()));
 
         // Play the defending move of the current player.
         defending_game.append_delta_unchecked(mv.clone());
@@ -101,7 +101,7 @@ where
             let outcome = attacking_game.get_outcome();
 
             if let Some(Outcome::Decisive { winner }) = outcome {
-                if *winner != current_state.move_log().current_state().current_player_index() {
+                if *winner != game.move_log().current_state().current_player_index() {
                     // This defending move is invalid, because it can be countered by an attacking move
                     // that decides the game.
                     return false;
@@ -246,9 +246,9 @@ impl<G: BoardGeometry> VictoryCondition<G> for RoyalVictoryCondition {
         }
     }
 
-    fn is_move_legal(&self, current_state: &Game<G>, mv: &ReversibleGameStateDelta<G>) -> bool {
-        let current_player = current_state.move_log().current_state().current_player_index();
-        let mut game = current_state.clone();
+    fn is_move_legal(&self, game: &Game<G>, mv: &ReversibleGameStateDelta<G>) -> bool {
+        let current_player = game.move_log().current_state().current_player_index();
+        let mut game = game.clone();
 
         game.append_delta_unchecked_without_evaluation(mv.clone());
 

@@ -75,6 +75,7 @@ impl<G: BoardGeometry> MoveLog<G> {
     }
 }
 
+/// A collection of legal moves that can be played during the current turn.
 #[derive(Default, Clone, PartialEq, Eq, Debug)]
 pub struct AvailableMoves<G: BoardGeometry> {
     pub(crate) moves_from: FxHashMap<<G as BoardGeometryExt>::Tile, FxHashSet<Move<G>>>,
@@ -85,6 +86,35 @@ pub struct AvailableMoves<G: BoardGeometry> {
 impl<G: BoardGeometry> AvailableMoves<G> {
     pub fn empty() -> Self {
         Default::default()
+    }
+
+    pub fn from(mut moves_from: FxHashMap<<G as BoardGeometryExt>::Tile, FxHashSet<Move<G>>>, move_index: usize) -> Self {
+        // Append the `move_index` to all affected pieces.
+        for move_set in moves_from.values_mut() {
+            replace_with_or_default(move_set, |move_set| {
+                move_set.into_iter().map(|mut mv| {
+                    mv.push_affecting_move(move_index);
+                    mv
+                }).collect()
+            });
+        }
+
+        let moves: FxHashSet<_> = moves_from.values().flat_map(|move_set| move_set.iter()).cloned().collect();
+        let deltas: FxHashSet<_> = moves.iter().map(|mv| mv.delta.clone()).collect();
+
+        Self {
+            moves_from,
+            moves,
+            deltas,
+        }
+    }
+
+    pub(crate) fn extend(&mut self, piece_tile: <G as BoardGeometryExt>::Tile, moves: &PieceMoves<G>) {
+        self.deltas.extend(moves.moves.iter().map(|mv| mv.delta.clone()));
+        self.moves_from.entry(piece_tile)
+            .or_insert_with(|| Default::default())
+            .extend(moves.moves.clone());
+        self.moves.extend(moves.moves.iter().cloned());
     }
 
     /// Returns an iterator over all valid moves with a piece at the specified tile.
@@ -126,6 +156,11 @@ impl<G: BoardGeometry> AvailableMoves<G> {
 pub struct Game<G: BoardGeometry> {
     pub(crate) rules: Arc<GameRules<G>>,
     pub(crate) move_log: MoveLog<G>,
+    /// Pseudo-legal move
+    pub(crate) pseudo_legal_moves: Option<Arc<PseudoLegalMoves<G>>>,
+    /// Cache of pseudo-legal moves
+    pub(crate) move_cache: MoveCache<G>,
+    /// Legal moves
     pub(crate) available_moves: Arc<AvailableMoves<G>>,
     pub(crate) outcome: Option<Outcome>,
 }
@@ -138,6 +173,8 @@ impl<G: BoardGeometry> Game<G> {
         let mut result = Self {
             rules: Arc::new(rules),
             move_log: MoveLog::new(initial_state),
+            pseudo_legal_moves: None,
+            move_cache: Default::default(),
             available_moves: Default::default(),
             outcome: None,
         };
@@ -241,11 +278,11 @@ impl<G: BoardGeometry> Game<G> {
     /// Does not evaluate the outcome of the game nor does it generate legal moves.
     #[deprecated = "safety hazard -- no evaluation is performed"]
     pub fn append_unchecked_without_evaluation(&mut self, mv: Move<G>) {
-        self.move_log.append(mv.delta);
+        self.append_delta_unchecked_without_evaluation(mv.delta);
     }
 
     pub fn evaluate(&mut self) {
-        self.evaluate_available_moves();
+        self.generate_available_moves();
         self.evaluate_outcome();
 
         if self.outcome.is_some() {
@@ -257,30 +294,66 @@ impl<G: BoardGeometry> Game<G> {
         self.outcome = self.rules.victory_conditions.evaluate(&self);
     }
 
-    fn evaluate_available_moves(&mut self) {
-        let mut available_moves = AvailableMoves::empty();
+    fn generate_available_moves(&mut self) {
+        // Removed invalidated cached moves
+        if self.move_cache.invalidate_recent(&self.move_log) {
+            // A move has been played since the last time this method was called, regenerate
+            // pseudo-legal moves.
+            self.pseudo_legal_moves = None;
+        }
+
+        if self.pseudo_legal_moves.is_none() {
+            self.generate_pseudo_legal_moves();
+        }
+
+        // Retain only valid moves, according to the game's `VictoryCondition`.
+        let move_index = self.move_log().len();
+        let mut moves_from = self.pseudo_legal_moves.as_ref().unwrap().as_ref().clone();
+
+        for move_set in moves_from.values_mut() {
+            move_set.retain(|mv| {
+                self.rules().victory_conditions.is_move_legal(self, mv.delta())
+            });
+        }
+
+        self.available_moves = Arc::new(AvailableMoves::from(moves_from, move_index));
+    }
+
+    /// Stores generated pseudo-legal moves in `Self::pseudo_legal_moves`.
+    fn generate_pseudo_legal_moves(&mut self) {
+        // Reuse the previous collection, but make sure it is empty.
+        let mut moves_from: PseudoLegalMoves<G> = Default::default();
+
         let current_player = self.move_log.current_state.current_player_index();
 
         for (tile, piece) in &self.move_log.current_state.pieces {
             if piece.owner == current_player {
-                if let Ok(current_available_moves) = self.evaluate_available_moves_from_tile(*tile) {
-                    available_moves.deltas.extend(current_available_moves.iter().map(|mv| mv.delta.clone()));
-                    available_moves.moves_from.entry(*tile)
-                        .or_insert_with(|| Default::default())
-                        .extend(current_available_moves.clone());
-                    available_moves.moves.extend(current_available_moves);
+                if let Some(cached_moves) = self.move_cache.get_cached_moves_from(*tile) {
+                    #[cfg(debug_assertions)]
+                    if let Ok(Some(generated_moves)) = self.generate_pseudo_legal_moves_from_tile(*tile) {
+                        if &generated_moves != cached_moves {
+                            panic!("Cached move discrepancy #{mv} from tile {tile:?}:\n\tcached:    {cached_moves:?}\n\tgenerated: {generated_moves:?}", mv=self.move_log().len());
+                        }
+                    }
+
+                    moves_from.insert(*tile, cached_moves.moves.clone());
+                    // available_moves.extend(*tile, cached_moves);
+                } else if let Ok(Some(generated_moves)) = self.generate_pseudo_legal_moves_from_tile(*tile) {
+                    moves_from.insert(*tile, generated_moves.moves.clone());
+                    // available_moves.extend(*tile, &generated_moves);
+                    self.move_cache.cache_moves(*tile, generated_moves);
                 }
             }
         }
 
-        self.available_moves = Arc::new(available_moves);
+        self.pseudo_legal_moves = Some(Arc::new(moves_from));
     }
 
     // TODO: Cache symmetrical deltas for non-chiral pieces.
     /// Executes the piece definition's state machine to generate moves from the piece on the given
     /// `tile`.
     /// The state machine is executed using breadth-first search.
-    fn evaluate_available_moves_from_tile(&self, tile: <G as BoardGeometryExt>::Tile) -> Result<FxHashSet<Move<G>>, ()> {
+    fn generate_pseudo_legal_moves_from_tile(&self, tile: <G as BoardGeometryExt>::Tile) -> Result<Option<PieceMoves<G>>, ()> {
         /// An item within the BFS queue.
         #[derive(Clone, Hash, Eq, PartialEq)]
         struct QueueItem<G2: BoardGeometry> {
@@ -305,7 +378,7 @@ impl<G: BoardGeometry> Game<G> {
             // If the currently playing player does not own the piece on this tile, it cannot be
             // moved during this turn.
             if current_player != piece.owner {
-                return Ok(HashSet::default());
+                return Ok(None);
             }
 
             let definition_index = piece.definition_index();
@@ -317,7 +390,9 @@ impl<G: BoardGeometry> Game<G> {
 
         // Moves generated by the state machine; to be checked for validity by
         // `VictoryCondition`.
-        let mut potential_moves = BTreeSet::new();
+        let mut potential_moves = FxHashSet::default();
+
+        let mut checked_state = CheckedState::default();
 
         // The queue for BFS.
         let mut queue = VecDeque::<QueueItem<G>>::new();
@@ -384,15 +459,16 @@ impl<G: BoardGeometry> Game<G> {
                     //
                     // TODO: Should `Action::Symmetry` have conditions as well? Consider creating a
                     //       `ConditionalAction` type to store conditions and the `Action`.
-                    let condition_evaluation_context = ConditionEvaluationContext {
+                    let mut condition_evaluation_context = ConditionEvaluationContext {
                         game: &game,
                         previous_game: self,
                         current_player,
                         isometry: &isometry,
+                        checked_state: &mut checked_state,
                         debug,
                     };
 
-                    if !condition.evaluate(&condition_evaluation_context) {
+                    if !condition.evaluate(&mut condition_evaluation_context) {
                         continue;
                     }
 
@@ -407,14 +483,15 @@ impl<G: BoardGeometry> Game<G> {
                                     affecting_moves: Default::default(),
                                 });
 
-                                delta.set(target, new_piece, move_index);
+                                delta.set(target, new_piece);
                             },
                             ActionEnum::CopyTile { source, target } => {
                                 let source = isometry.apply(source);
                                 let target = isometry.apply(target);
                                 let piece = game_state.tile(&game.rules.board, source).and_then(|tile| tile.get_piece().cloned());
 
-                                delta.set(target, piece, move_index);
+                                checked_state.register_checked_piece_tile(source);
+                                delta.set(target, piece);
                             },
                         }
                     }
@@ -433,10 +510,12 @@ impl<G: BoardGeometry> Game<G> {
                                 return None;
                             }
 
-                            delta.set(tile, None, move_index);
+                            delta.set(tile, None);
+                            checked_state.register_checked_piece_tile(tile);
                         }
 
-                        delta.set(move_choice, piece, move_index);
+                        checked_state.register_checked_piece_tile(move_choice);
+                        delta.set(move_choice, piece);
 
                         Some((move_choice, axis_permutation.clone(), delta))
                     }).collect()
@@ -493,14 +572,10 @@ impl<G: BoardGeometry> Game<G> {
             } 
         }
 
-        // Retain only valid moves, according to the game's `VictoryCondition`.
-        let valid_moves: FxHashSet<_> = potential_moves.into_iter()
-            .filter(|mv| {
-                self.rules().victory_conditions.is_move_legal(self, mv.delta())
-            })
-            .collect();
-
-        Ok(valid_moves)
+        Ok(Some(PieceMoves {
+            moves: potential_moves,
+            checked_state,
+        }))
     }
 
     pub fn move_log(&self) -> &MoveLog<G> {

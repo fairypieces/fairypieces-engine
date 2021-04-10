@@ -28,6 +28,10 @@ impl<G: BoardGeometry> Move<G> {
         self.delta
     }
 
+    pub fn push_affecting_move(&mut self, move_index: usize) {
+        self.delta.push_affecting_move(move_index)
+    }
+
     pub fn delta(&self) -> &ReversibleGameStateDelta<G> {
         &self.delta
     }
@@ -76,6 +80,10 @@ impl<G: BoardGeometry> ReversibleGameStateDelta<G> {
         &self.backward
     }
 
+    pub fn push_affecting_move(&mut self, move_index: usize) {
+        self.forward.push_affecting_move(move_index);
+    }
+
     pub fn into_forward(self) -> GameStateDelta<G> {
         self.forward
     }
@@ -103,11 +111,15 @@ impl<G: BoardGeometry> GameStateDelta<G> {
         }
     }
 
-    pub fn set(&mut self, tile: <G as BoardGeometryExt>::Tile, mut piece: Option<Piece<G>>, move_index: usize) {
-        if let Some(piece) = piece.as_mut() {
-            piece.push_affecting_move(move_index);
+    pub fn push_affecting_move(&mut self, move_index: usize) {
+        for piece in self.affected_pieces.values_mut() {
+            if let Some(piece) = piece.as_mut() {
+                piece.push_affecting_move(move_index);
+            }
         }
+    }
 
+    pub fn set(&mut self, tile: <G as BoardGeometryExt>::Tile, mut piece: Option<Piece<G>>) {
         self.affected_pieces.insert(tile, piece);
     }
 
