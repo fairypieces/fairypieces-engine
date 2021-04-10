@@ -7,6 +7,7 @@ use std::collections::{HashMap, VecDeque, BTreeSet, BTreeMap, HashSet, hash_map:
 use fxhash::{FxHashMap, FxHashSet};
 use replace_with::replace_with_or_default;
 use hibitset::BitSet;
+use sealed::sealed;
 use crate::victory_conditions::*;
 use crate::delta::*;
 use crate::*;
@@ -25,7 +26,7 @@ pub enum PastTileError {
 //       Either wrap `initial_state` in an `Arc` or get rid of it completely, as
 //       it can always be derived from `current_state` and `moves`, which are reversible.
 /// The list of all moves played during a [`Game`].
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct MoveLog<G: BoardGeometry> {
     pub(crate) current_state: GameState<G>,
     /// A list of normalized deltas.
@@ -150,151 +151,119 @@ impl<G: BoardGeometry> AvailableMoves<G> {
     }
 }
 
-/// A [`Game`] is made up of rules and its state.
-/// This is the main type to validate/evaluate/simulate games with.
-#[derive(Clone, Debug)]
-pub struct Game<G: BoardGeometry> {
-    pub(crate) rules: Arc<GameRules<G>>,
-    pub(crate) move_log: MoveLog<G>,
-    /// Pseudo-legal move
-    pub(crate) pseudo_legal_moves: Option<Arc<PseudoLegalMoves<G>>>,
-    /// Cache of pseudo-legal moves
-    pub(crate) move_cache: MoveCache<G>,
-    /// Legal moves
+pub trait GameEvaluation<G: BoardGeometry>: crate::util::Sealed + Clone + std::fmt::Debug + Default {}
+
+#[derive(Clone, Debug, Default)]
+pub struct NotEvaluated;
+
+impl crate::util::Sealed for NotEvaluated {}
+impl<G: BoardGeometry> GameEvaluation<G> for NotEvaluated {}
+
+#[derive(Clone, Debug, Default)]
+pub struct Evaluated<G: BoardGeometry> {
+    /// Legal moves.
     pub(crate) available_moves: Arc<AvailableMoves<G>>,
+    /// The outcome of the game, if it has been determined by the victory conditions.
     pub(crate) outcome: Option<Outcome>,
 }
 
-impl<G: BoardGeometry> Game<G> {
-    // TODO: Validate that arguments are compatible.
-    /// Creates a new game with the provided `rules` and the `initial_state` corresponding to those
-    /// rules.
-    pub fn new(rules: GameRules<G>, initial_state: GameState<G>) -> Self {
-        let mut result = Self {
-            rules: Arc::new(rules),
-            move_log: MoveLog::new(initial_state),
-            pseudo_legal_moves: None,
-            move_cache: Default::default(),
-            available_moves: Default::default(),
-            outcome: None,
-        };
+impl<G: BoardGeometry> crate::util::Sealed for Evaluated<G> {}
+impl<G: BoardGeometry> GameEvaluation<G> for Evaluated<G> {}
 
-        result.evaluate();
+/// A [`Game`] is made up of rules and its state.
+/// This is the main type to validate/evaluate/simulate games with.
+#[derive(Clone, Debug, Default)]
+pub struct Game<G: BoardGeometry, E: GameEvaluation<G> = Evaluated<G>> {
+    pub(crate) rules: Arc<GameRules<G>>,
+    pub(crate) move_log: MoveLog<G>,
+    /// Pseudo-legal moves
+    pub(crate) pseudo_legal_moves: Option<Arc<PseudoLegalMoves<G>>>,
+    /// Cache of pseudo-legal moves
+    pub(crate) move_cache: MoveCache<G>,
+    pub(crate) evaluation: E,
+}
 
-        result
+impl<G: BoardGeometry, E: GameEvaluation<G>> Game<G, E> {
+    fn replace_evaluation<R: GameEvaluation<G>>(self, replace: impl FnOnce(E) -> R) -> Game<G, R> {
+        Game {
+            rules: self.rules,
+            move_log: self.move_log,
+            pseudo_legal_moves: self.pseudo_legal_moves,
+            move_cache: self.move_cache,
+            evaluation: (replace)(self.evaluation),
+        }
     }
 
-    pub fn reset_with_state(&mut self, initial_state: GameState<G>) {
-        self.move_log = MoveLog::new(initial_state);
+    /// Alter the game's victory conditions
+    pub(crate) fn with_victory_conditions(mut self, victory_conditions: Box<dyn VictoryCondition<G>>) -> Game<G, NotEvaluated> {
+        Arc::make_mut(&mut self.rules).victory_conditions = victory_conditions;
 
-        self.evaluate();
+        self.replace_evaluation(|_| NotEvaluated)
     }
 
     /// Clone the game with altered victory conditions.
-    pub(crate) fn clone_with_victory_conditions(&self, victory_conditions: Box<dyn VictoryCondition<G>>) -> Self {
-        let mut result = self.clone();
-        Arc::make_mut(&mut result.rules).victory_conditions = victory_conditions;
-
-        result.evaluate();
-
-        result
-    }
-
-    /// Returns the outcome of the game at the current state.
-    pub fn get_outcome(&self) -> Option<&Outcome> {
-        self.outcome.as_ref()
-    }
-
-    /// Returns a collection of all valid moves.
-    pub fn available_moves(&self) -> &AvailableMoves<G> {
-        &self.available_moves
-    }
-
-    /// If the provided `delta` corresponds to a legal move, plays that move.
-    /// Otherwise, results in an `Err(_)`.
-    #[must_use = "The move may not be available."]
-    pub fn append_delta(&mut self, delta: ReversibleGameStateDelta<G>) -> Result<(), ()> {
-        if self.outcome.is_some() {
-            return Err(());
-        }
-
-        self.available_moves().is_delta_available(&delta).then(|| {
-            self.append_delta_unchecked(delta)
-        }).ok_or(())
+    pub(crate) fn clone_with_victory_conditions(&self, victory_conditions: Box<dyn VictoryCondition<G>>) -> Game<G, NotEvaluated> {
+        self.clone().with_victory_conditions(victory_conditions)
     }
 
     /// Appends a delta without checking whether that delta is available as a legal move.
-    pub(crate) fn append_delta_unchecked(&mut self, delta: ReversibleGameStateDelta<G>) {
-        self.append_delta_unchecked_without_evaluation(delta);
-        self.evaluate();
+    pub(crate) fn append_delta_unchecked(self, delta: ReversibleGameStateDelta<G>) -> Game<G, Evaluated<G>> {
+        let result = self.append_delta_unchecked_without_evaluation(delta);
+        result.evaluate()
+    }
+
+    /// Appends a move without checking whether that move is legal (is an element of [`Game::available_moves`]).
+    pub(crate) fn append_unchecked(mut self, mv: Move<G>) -> Game<G, Evaluated<G>> {
+        let result = self.append_unchecked_without_evaluation(mv);
+        result.evaluate()
     }
 
     /// Appends a delta without checking whether that delta is available as a legal move.
     /// Does not evaluate the outcome of the game nor does it generate legal moves.
-    pub(crate) fn append_delta_unchecked_without_evaluation(&mut self, delta: ReversibleGameStateDelta<G>) {
+    pub(crate) fn append_delta_unchecked_without_evaluation(mut self, delta: ReversibleGameStateDelta<G>) -> Game<G, NotEvaluated> {
         self.move_log.append(delta);
+        self.replace_evaluation(|_| NotEvaluated)
+    }
+
+    /// Appends a move without checking whether that move is legal (is an element of [`Game::available_moves`]).
+    /// Does not evaluate the outcome of the game nor does it generate legal moves.
+    pub(crate) fn append_unchecked_without_evaluation(self, mv: Move<G>) -> Game<G, NotEvaluated> {
+        self.append_delta_unchecked_without_evaluation(mv.delta)
+            .replace_evaluation(|_| NotEvaluated)
     }
 
     /// See [`Game::append_delta_unchecked_without_evaluation`].
-    fn normalize_and_append_delta_unchecked_without_evaluation(&mut self, delta: GameStateDelta<G>, move_type: MoveType) {
+    pub(crate) fn normalize_and_append_delta_unchecked_without_evaluation(self, delta: GameStateDelta<G>, move_type: MoveType) -> Game<G, NotEvaluated> {
         let normalized = delta.normalize(&self.move_log.current_state, self.rules().board(), move_type);
 
         self.append_delta_unchecked_without_evaluation(normalized)
     }
 
-    /// If the provided `delta`, normalized, corresponds to a legal move, plays that move.
-    /// Otherwise, results in an `Err(_)`.
-    #[must_use = "The move may not be available."]
-    fn normalize_and_append_delta(&mut self, delta: GameStateDelta<G>, move_type: MoveType) -> Result<(), ()> {
-        let normalized = delta.normalize(&self.move_log.current_state, self.rules().board(), move_type);
-
-        self.append_delta(normalized)
+    pub fn move_log(&self) -> &MoveLog<G> {
+        &self.move_log
     }
 
-    /// If the provided move is legal (is an element of [`Game::available_moves`]), plays that
-    /// move.
-    /// Otherwise, results in an `Err(_)`.
-    #[must_use = "The move may not be available."]
-    pub fn append(&mut self, mv: Move<G>) -> Result<(), ()> {
-        if self.outcome.is_some() {
-            return Err(());
+    pub fn rules(&self) -> &GameRules<G> {
+        &self.rules
+    }
+}
+
+impl<G: BoardGeometry> Game<G, NotEvaluated> {
+    pub fn evaluate(mut self) -> Game<G, Evaluated<G>> {
+        let mut available_moves = self.generate_available_moves();
+        let outcome = self.rules.victory_conditions.evaluate(&self, &available_moves);
+
+        if outcome.is_some() {
+            available_moves = AvailableMoves::empty();
         }
 
-        self.available_moves().is_move_available(&mv).then(|| {
-            self.append_unchecked(mv);
-        }).ok_or(())
+        self.replace_evaluation(|_| Evaluated {
+            available_moves: Arc::new(available_moves),
+            outcome,
+        })
     }
 
-    /// Appends a move without checking whether that move is legal (is an element of [`Game::available_moves`]).
-    pub(crate) fn append_unchecked(&mut self, mv: Move<G>) {
-        self.append_unchecked_without_evaluation(mv);
-        self.evaluate();
-    }
-
-    // FIXME: Should we make this compile-time safe?
-    // It would be possible to encode whether the game is evaluated using a generic boolean
-    // parameter.
-    /// Appends a move without checking whether that move is legal (is an element of [`Game::available_moves`]).
-    /// Does not evaluate the outcome of the game nor does it generate legal moves.
-    #[deprecated = "safety hazard -- no evaluation is performed"]
-    pub fn append_unchecked_without_evaluation(&mut self, mv: Move<G>) {
-        self.append_delta_unchecked_without_evaluation(mv.delta);
-    }
-
-    pub fn evaluate(&mut self) {
-        self.generate_available_moves();
-        self.evaluate_outcome();
-
-        if self.outcome.is_some() {
-            self.available_moves = Arc::new(AvailableMoves::empty());
-        }
-    }
-
-    fn evaluate_outcome(&mut self) {
-        self.outcome = self.rules.victory_conditions.evaluate(&self);
-    }
-
-    fn generate_available_moves(&mut self) {
+    fn generate_available_moves(&mut self) -> AvailableMoves<G> {
         // Removed invalidated cached moves
         if self.move_cache.invalidate_recent(&self.move_log) {
             // A move has been played since the last time this method was called, regenerate
@@ -316,7 +285,7 @@ impl<G: BoardGeometry> Game<G> {
             });
         }
 
-        self.available_moves = Arc::new(AvailableMoves::from(moves_from, move_index));
+        AvailableMoves::from(moves_from, move_index)
     }
 
     /// Stores generated pseudo-legal moves in `Self::pseudo_legal_moves`.
@@ -432,12 +401,10 @@ impl<G: BoardGeometry> Game<G> {
 
             // The current game (self) with the applied `GameStateDelta` of the current `QueueItem`.
             let game = {
-                let mut game = self.clone();
+                let game = self.clone();
                 let partial_delta = delta.clone();
 
-                game.normalize_and_append_delta_unchecked_without_evaluation(partial_delta, move_type.clone());
-
-                game
+                game.normalize_and_append_delta_unchecked_without_evaluation(partial_delta, move_type.clone())
             };
 
             if debug {
@@ -565,9 +532,8 @@ impl<G: BoardGeometry> Game<G> {
             println!("Pseudo-legal moves:");
 
             for mv in &potential_moves {
-                let mut game = self.clone();
+                let game = self.clone().append_unchecked_without_evaluation(mv.clone());
 
-                game.append_unchecked_without_evaluation(mv.clone());
                 println!("Pseudo-legal move:\n{game}", game=G::print(&game));
             } 
         }
@@ -577,13 +543,120 @@ impl<G: BoardGeometry> Game<G> {
             checked_state,
         }))
     }
+}
 
-    pub fn move_log(&self) -> &MoveLog<G> {
-        &self.move_log
+impl<G: BoardGeometry> Game<G, Evaluated<G>> {
+    // TODO: Validate that arguments are compatible.
+    /// Creates a new game with the provided `rules` and the `initial_state` corresponding to those
+    /// rules.
+    pub fn new(rules: GameRules<G>, initial_state: GameState<G>) -> Self {
+        let result = Game {
+            rules: Arc::new(rules),
+            move_log: MoveLog::new(initial_state),
+            pseudo_legal_moves: None,
+            move_cache: Default::default(),
+            evaluation: NotEvaluated,
+        };
+
+        result.evaluate()
     }
 
-    pub fn rules(&self) -> &GameRules<G> {
-        &self.rules
+    pub fn reset_with_state(&mut self, initial_state: GameState<G>) {
+        self.move_log = MoveLog::new(initial_state);
+
+        replace_with_or_default(self, |result| {
+            result.replace_evaluation(|_| NotEvaluated).evaluate()
+        });
+    }
+
+    /// Returns the outcome of the game at the current state.
+    pub fn get_outcome(&self) -> Option<&Outcome> {
+        self.evaluation.outcome.as_ref()
+    }
+
+    /// Returns a collection of all valid moves.
+    pub fn available_moves(&self) -> &AvailableMoves<G> {
+        &self.evaluation.available_moves
+    }
+
+    /// If the provided `delta` corresponds to a legal move, plays that move.
+    /// Otherwise, results in an `Err(_)`.
+    #[must_use = "The move may not be available."]
+    pub fn append_delta(&mut self, delta: ReversibleGameStateDelta<G>) -> Result<(), ()> {
+        // The game has already been decided.
+        if self.evaluation.outcome.is_some() {
+            return Err(());
+        }
+
+        self.available_moves().is_delta_available(&delta).then(|| {
+            replace_with_or_default(self, |result| {
+                result.append_delta_unchecked(delta)
+            })
+        }).ok_or(())
+    }
+
+    /// If the provided `delta`, normalized, corresponds to a legal move, plays that move.
+    /// Otherwise, results in an `Err(_)`.
+    #[must_use = "The move may not be available."]
+    pub fn normalize_and_append_delta(&mut self, delta: GameStateDelta<G>, move_type: MoveType) -> Result<(), ()> {
+        let normalized = delta.normalize(&self.move_log.current_state, self.rules().board(), move_type);
+
+        self.append_delta(normalized)
+    }
+
+    /// If the provided move is legal (is an element of [`Game::available_moves`]), plays that
+    /// move.
+    /// Otherwise, results in an `Err(_)`.
+    #[must_use = "The move may not be available."]
+    pub fn append(&mut self, mv: Move<G>) -> Result<(), ()> {
+        // The game has already been decided.
+        if self.evaluation.outcome.is_some() {
+            return Err(());
+        }
+
+        self.available_moves().is_move_available(&mv).then(|| {
+            replace_with_or_default(self, |result| {
+                result.append_unchecked(mv)
+            })
+        }).ok_or(())
+    }
+
+    /// If the provided `delta` corresponds to a legal move, plays that move.
+    /// Otherwise, results in an `Err(_)`.
+    #[must_use = "The move may not be available."]
+    pub fn append_delta_without_evaluation(self, delta: ReversibleGameStateDelta<G>) -> Result<Game<G, NotEvaluated>, ()> {
+        // The game has already been decided.
+        if self.evaluation.outcome.is_some() {
+            return Err(());
+        }
+
+        self.available_moves().is_delta_available(&delta).then(|| {
+            self.append_delta_unchecked_without_evaluation(delta)
+        }).ok_or(())
+    }
+
+    /// If the provided `delta`, normalized, corresponds to a legal move, plays that move.
+    /// Otherwise, results in an `Err(_)`.
+    #[must_use = "The move may not be available."]
+    pub fn normalize_and_append_delta_without_evaluation(self, delta: GameStateDelta<G>, move_type: MoveType) -> Result<Game<G, NotEvaluated>, ()> {
+        let normalized = delta.normalize(&self.move_log.current_state, self.rules().board(), move_type);
+
+        self.append_delta_without_evaluation(normalized)
+    }
+
+    /// If the provided move is legal (is an element of [`Game::available_moves`]), plays that
+    /// move.
+    /// Otherwise, results in an `Err(_)`.
+    #[must_use = "The move may not be available."]
+    pub fn append_without_evaluation(self, mv: Move<G>) -> Result<Game<G, NotEvaluated>, ()> {
+        // The game has already been decided.
+        if self.evaluation.outcome.is_some() {
+            return Err(());
+        }
+
+        self.available_moves().is_move_available(&mv).then(|| {
+            self.append_unchecked_without_evaluation(mv)
+        }).ok_or(())
     }
 }
 
@@ -595,6 +668,17 @@ pub struct GameRules<G: BoardGeometry> {
     pub(crate) piece_set: PieceSet<G>,
     pub(crate) players: NonZeroUsize,
     pub(crate) victory_conditions: Box<dyn VictoryCondition<G>>,
+}
+
+impl<G: BoardGeometry> Default for GameRules<G> {
+    fn default() -> Self {
+        Self {
+            board: Default::default(),
+            piece_set: Default::default(),
+            players: NonZeroUsize::new(2).unwrap(),
+            victory_conditions: Box::new(NoVictoryCondition),
+        }
+    }
 }
 
 impl<G: BoardGeometry> GameRules<G> {

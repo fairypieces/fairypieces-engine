@@ -14,6 +14,7 @@ use board::*;
 use piece::*;
 use game::*;
 
+mod util;
 pub mod math;
 pub mod board;
 pub mod piece;

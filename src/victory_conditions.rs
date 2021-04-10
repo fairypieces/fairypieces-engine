@@ -23,10 +23,10 @@ pub enum Outcome {
 pub trait VictoryCondition<G: BoardGeometry>: Send + Sync + Debug + DynClone {
     /// Determines the outcome of a game at the current state.
     /// Not to be called directly, use [`Game::get_outcome`] instead.
-    fn evaluate(&self, game: &Game<G>) -> Option<Outcome>;
+    fn evaluate(&self, game: &Game<G, NotEvaluated>, available_moves: &AvailableMoves<G>) -> Option<Outcome>;
 
     /// Determines whether a pseudo-legal move is legal.
-    fn is_move_legal(&self, game: &Game<G>, mv: &ReversibleGameStateDelta<G>) -> bool;
+    fn is_move_legal(&self, game: &Game<G, NotEvaluated>, mv: &ReversibleGameStateDelta<G>) -> bool;
 }
 
 dyn_clone::clone_trait_object!(<G> VictoryCondition<G> where G: BoardGeometry);
@@ -37,11 +37,11 @@ dyn_clone::clone_trait_object!(<G> VictoryCondition<G> where G: BoardGeometry);
 pub struct NoVictoryCondition;
 
 impl<G: BoardGeometry> VictoryCondition<G> for NoVictoryCondition {
-    fn evaluate(&self, _game: &Game<G>) -> Option<Outcome> {
+    fn evaluate(&self, _game: &Game<G, NotEvaluated>, _available_moves: &AvailableMoves<G>) -> Option<Outcome> {
         None
     }
 
-    fn is_move_legal(&self, _game: &Game<G>, _mv: &ReversibleGameStateDelta<G>) -> bool {
+    fn is_move_legal(&self, _game: &Game<G, NotEvaluated>, _mv: &ReversibleGameStateDelta<G>) -> bool {
         true
     }
 }
@@ -75,29 +75,28 @@ where
     G: BoardGeometry + Send + Sync + Debug + Clone,
     C: Send + Sync + Debug + Clone + VictoryCondition<G> + 'static,
 {
-    fn evaluate(&self, game: &Game<G>) -> Option<Outcome> {
-        if game.available_moves().moves().count() == 0 {
+    fn evaluate(&self, game: &Game<G, NotEvaluated>, available_moves: &AvailableMoves<G>) -> Option<Outcome> {
+        if available_moves.moves().count() == 0 {
             // TODO: stalemate detection
             return Some(Outcome::Decisive {
                 winner: (game.move_log().current_state().current_player_index() + 1) % game.rules().players().get() as PlayerIndex,
             });
         }
 
-        self.inner.evaluate(game)
+        self.inner.evaluate(game, available_moves)
     }
 
-    fn is_move_legal(&self, game: &Game<G>, mv: &ReversibleGameStateDelta<G>) -> bool {
-        let mut defending_game = game.clone_with_victory_conditions(Box::new(self.inner.clone()));
+    fn is_move_legal(&self, game: &Game<G, NotEvaluated>, mv: &ReversibleGameStateDelta<G>) -> bool {
+        // FIXME: Replace Box with Arc so as to avoid unnecessary allocations
+        let defending_game = game.clone_with_victory_conditions(Box::new(self.inner.clone()));
 
         // Play the defending move of the current player.
-        defending_game.append_delta_unchecked(mv.clone());
+        let defending_game = defending_game.append_delta_unchecked(mv.clone());
 
         // Find an attacking move that would decide the game.
         for attacking_move in defending_game.available_moves().moves() {
-            let mut attacking_game = defending_game.clone();
-
-            attacking_game.append_unchecked(attacking_move.clone());
-
+            let attacking_game = defending_game.clone();
+            let attacking_game = attacking_game.append_unchecked(attacking_move.clone());
             let outcome = attacking_game.get_outcome();
 
             if let Some(Outcome::Decisive { winner }) = outcome {
@@ -188,7 +187,7 @@ impl RoyalVictoryCondition {
 }
 
 impl<G: BoardGeometry> VictoryCondition<G> for RoyalVictoryCondition {
-    fn evaluate(&self, game: &Game<G>) -> Option<Outcome> {
+    fn evaluate(&self, game: &Game<G, NotEvaluated>, _available_moves: &AvailableMoves<G>) -> Option<Outcome> {
         let state = game.move_log().current_state();
         let rules = game.rules();
         // Initialize piece counts with all piece definitions and counts of 0
@@ -246,15 +245,15 @@ impl<G: BoardGeometry> VictoryCondition<G> for RoyalVictoryCondition {
         }
     }
 
-    fn is_move_legal(&self, game: &Game<G>, mv: &ReversibleGameStateDelta<G>) -> bool {
+    fn is_move_legal(&self, game: &Game<G, NotEvaluated>, mv: &ReversibleGameStateDelta<G>) -> bool {
         let current_player = game.move_log().current_state().current_player_index();
-        let mut game = game.clone();
-
-        game.append_delta_unchecked_without_evaluation(mv.clone());
+        let game = game.clone().append_delta_unchecked_without_evaluation(mv.clone());
 
         // Do not let the player make a move that result in them lose the game.
-        if let Some(Outcome::Decisive { winner }) = game.get_outcome() {
-            if *winner != current_player {
+        // Evaluation does not require available moves to be known, hence we can pass
+        // `AvailableMoves::empty()`.
+        if let Some(Outcome::Decisive { winner }) = self.evaluate(&game, &AvailableMoves::empty()) {
+            if winner != current_player {
                 return false;
             }
         }

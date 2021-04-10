@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 use fxhash::{FxHashSet, FxHashMap};
 use crate::{Game, MoveLog};
-use crate::game::PlayerIndex;
+use crate::game::{PlayerIndex, GameEvaluation, NotEvaluated};
 use crate::delta::{Move, ReversibleGameStateDelta};
 use crate::math::*;
 use crate::board::*;
@@ -12,7 +12,7 @@ pub type PieceDefinitionIndex = u16;
 pub type TileFlagIndex = u32;
 
 /// A set of piece definitions whose movesets may refer to each other.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct PieceSet<G: BoardGeometry> {
     definitions: Box<[PieceDefinition<G>]>,
 }
@@ -516,8 +516,8 @@ impl<G: BoardGeometry> CheckedState<G> {
 }
 
 pub(crate) struct ConditionEvaluationContext<'a, G: BoardGeometry> {
-    pub(crate) game: &'a Game<G>,
-    pub(crate) previous_game: &'a Game<G>,
+    pub(crate) game: &'a Game<G, NotEvaluated>,
+    pub(crate) previous_game: &'a Game<G, NotEvaluated>,
     pub(crate) current_player: PlayerIndex,
     pub(crate) isometry: &'a Isometry<G>,
     pub(crate) checked_state: &'a mut CheckedState<G>,

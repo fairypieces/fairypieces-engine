@@ -10,10 +10,10 @@ use lazy_static::lazy_static;
 use smallvec::{SmallVec, smallvec};
 use fxhash::FxHashSet;
 use crate::math::*;
-use crate::{Game, GameRules, GameState};
+use crate::{Game, GameRules, GameState, GameEvaluation};
 
 /// A board is a grid of tiles (cells) on which the game is played.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Board<G: BoardGeometry> {
     pub(crate) tiles: BoardTiles<G>,
 }
@@ -34,7 +34,8 @@ impl<G: BoardGeometry> Board<G> {
 
 /// `BoardTiles` determines which tiles of the `BoardGeometry` actually make up
 /// the playable board.
-#[derive(Debug, Clone)]
+/// Empty by default.
+#[derive(Debug, Clone, Default)]
 pub struct BoardTiles<G: BoardGeometry> {
     invert_set: bool,
     tile_set: FxHashSet<<G as BoardGeometryExt>::Tile>,
@@ -115,7 +116,7 @@ pub trait BoardGeometry: Clone + Copy + Default + PartialEq + Eq + PartialOrd + 
 
     fn print_state(game_rules: &GameRules<Self>, game_state: &GameState<Self>) -> String;
 
-    fn print(game: &Game<Self>) -> String {
+    fn print<E: GameEvaluation<Self>>(game: &Game<Self, E>) -> String {
         Self::print_state(&game.rules, &game.move_log.current_state)
     }
 }
