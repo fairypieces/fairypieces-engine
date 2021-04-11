@@ -46,6 +46,14 @@ impl<G: BoardGeometry> VictoryCondition<G> for NoVictoryCondition {
     }
 }
 
+/// If the current player appears in a stalemate, how is the game evaluated?
+#[derive(Debug, Clone, Copy)]
+pub enum StalemateEvaluation {
+    Draw,
+    Loss,
+}
+
+// FIXME: Enforce that the the game rules are made for exactly 2 players.
 /// A [`VictoryCondition`] which predicts an inevitable victory 2 turns ahead and makes
 /// moves which would result in a loss in the next turn illegal.
 ///
@@ -54,6 +62,7 @@ impl<G: BoardGeometry> VictoryCondition<G> for NoVictoryCondition {
 #[derive(Debug, Clone)]
 pub struct PredictiveVictoryCondition<G: BoardGeometry, C: VictoryCondition<G>> {
     inner: C,
+    stalemate_evaluation: StalemateEvaluation,
     __marker: PhantomData<G>,
 }
 
@@ -62,9 +71,10 @@ where
     G: BoardGeometry + Send + Sync + Debug + Clone,
     C: Send + Sync + Debug + Clone + VictoryCondition<G>,
 {
-    pub fn new(inner: C) -> Self {
+    pub fn new(stalemate_evaluation: StalemateEvaluation, inner: C) -> Self {
         Self {
             inner,
+            stalemate_evaluation,
             __marker: Default::default(),
         }
     }
@@ -76,14 +86,51 @@ where
     C: Send + Sync + Debug + Clone + VictoryCondition<G> + 'static,
 {
     fn evaluate(&self, game: &Game<G, NotEvaluated>, available_moves: &AvailableMoves<G>) -> Option<Outcome> {
-        if available_moves.moves().count() == 0 {
-            // TODO: stalemate detection
-            return Some(Outcome::Decisive {
-                winner: (game.move_log().current_state().current_player_index() + 1) % game.rules().players().get() as PlayerIndex,
-            });
+        if let Some(outcome) = self.inner.evaluate(game, available_moves) {
+            return Some(outcome);
         }
 
-        self.inner.evaluate(game, available_moves)
+        if available_moves.moves().count() == 0 {
+            // The next player, who may be the winner.
+            let next_player = (game.move_log().current_state().current_player_index() + 1) % game.rules().players().get() as PlayerIndex;
+            let loss_outcome = Outcome::Decisive { winner: next_player };
+
+            match self.stalemate_evaluation {
+                StalemateEvaluation::Loss => Some(loss_outcome),
+                StalemateEvaluation::Draw => {
+                    let mut game = game.clone_with_victory_conditions(Box::new(self.inner.clone()));
+
+                    if game.move_log().len() > 0 {
+                        // If a move was played, replay that move with its `next_player` set to the
+                        // current `next_player`.
+                        let mut last_mv = game.move_log.undo(&mut game.move_cache, 1).remove(0);
+                        last_mv.set_next_player(next_player);
+                        game = game.append_delta_unchecked_without_evaluation(last_mv);
+                    } else {
+                        // Otherwise, just change the current state, which is the initial state.
+                        game.move_log.current_state.current_player_index = next_player;
+                    }
+
+                    // Does another move of the potential winner exist, that would decide the game?
+                    let game = game.evaluate();
+                    let loss = game.available_moves().deltas().any(|delta| {
+                        let game = game.clone().append_delta_unchecked(delta.clone());
+
+                        game.get_outcome() == Some(&loss_outcome)
+                    });
+
+                    if loss {
+                        // Yes, it does, the game is decided.
+                        Some(loss_outcome)
+                    } else {
+                        // Draw by stalemate.
+                        Some(Outcome::Draw)
+                    }
+                },
+            }
+        } else {
+            None
+        }
     }
 
     fn is_move_legal(&self, game: &Game<G, NotEvaluated>, mv: &ReversibleGameStateDelta<G>) -> bool {

@@ -26,7 +26,7 @@ pub enum PastTileError {
 //       Either wrap `initial_state` in an `Arc` or get rid of it completely, as
 //       it can always be derived from `current_state` and `moves`, which are reversible.
 /// The list of all moves played during a [`Game`].
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct MoveLog<G: BoardGeometry> {
     pub(crate) current_state: GameState<G>,
     /// A list of normalized deltas.
@@ -44,6 +44,43 @@ impl<G: BoardGeometry> MoveLog<G> {
 
     pub fn len(&self) -> usize {
         self.moves.len()
+    }
+
+    /// Implementation safety: This function invalidates moves from `cache`. See `MoveCache`
+    /// for further description.
+    pub(crate) fn undo(&mut self, cache: &mut MoveCache<G>, len: usize) -> im::Vector<ReversibleGameStateDelta<G>> {
+        assert!(len <= self.moves.len(), "Attempted to undo {} moves from a move log with the length {}.", len, self.moves.len());
+
+        // Remove `len` moves from the end
+        let new_len = self.moves.len() - len;
+        let removed_moves = self.moves.split_off(new_len);
+        let mut removed_moves_during_invalidation = Vec::new();
+
+        // Update the current state
+        for mv in removed_moves.iter().rev() {
+            self.current_state = self.current_state.clone().apply(mv.backward().clone());
+
+            // FIXME: Possible optimization: Do not invalidate moves that are not even cached.
+            cache.invalidate(mv, &mut removed_moves_during_invalidation);
+        }
+
+        cache.applied_moves = std::cmp::min(cache.applied_moves, new_len);
+
+        removed_moves
+    }
+
+    pub fn compute_nth_back(&self, index_back: usize) -> GameState<G> {
+        let mut result = self.current_state.clone();
+
+        for mv in self.moves.iter().rev().take(index_back) {
+            result = result.apply(mv.backward().clone());
+        }
+
+        result
+    }
+
+    pub fn compute_nth(&self, index: usize) -> GameState<G> {
+        self.compute_nth_back(self.len() - index)
     }
 
     pub fn append(&mut self, delta: ReversibleGameStateDelta<G>) {

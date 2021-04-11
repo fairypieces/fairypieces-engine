@@ -80,6 +80,10 @@ impl<G: BoardGeometry> ReversibleGameStateDelta<G> {
         &self.backward
     }
 
+    pub fn set_next_player(&mut self, next_player: PlayerIndex) {
+        self.forward.next_player = next_player;
+    }
+
     pub fn push_affecting_move(&mut self, move_index: usize) {
         self.forward.push_affecting_move(move_index);
     }
@@ -117,6 +121,10 @@ impl<G: BoardGeometry> GameStateDelta<G> {
                 piece.push_affecting_move(move_index);
             }
         }
+    }
+
+    pub fn set_next_player(&mut self, next_player: PlayerIndex) {
+        self.next_player = next_player;
     }
 
     pub fn set(&mut self, tile: <G as BoardGeometryExt>::Tile, mut piece: Option<Piece<G>>) {

@@ -590,9 +590,10 @@ lazy_static! {
         players: NonZeroUsize::new(2).unwrap(),
         victory_conditions: Box::new(
             PredictiveVictoryCondition::new(
+                StalemateEvaluation::Draw,
                 RoyalVictoryCondition::new(RoyalVictoryType::Absolute, &*GAME_STATE_INITIAL)
                     .with_min_piece_count(PLAYER_WHITE, PIECE_KING, 1)
-                    .with_min_piece_count(PLAYER_BLACK, PIECE_KING, 1)
+                    .with_min_piece_count(PLAYER_BLACK, PIECE_KING, 1),
             )
         ),
     };

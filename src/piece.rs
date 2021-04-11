@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 use fxhash::{FxHashSet, FxHashMap};
 use crate::{Game, MoveLog};
-use crate::game::{PlayerIndex, GameEvaluation, NotEvaluated};
+use crate::game::{PlayerIndex, GameState, GameEvaluation, NotEvaluated};
 use crate::delta::{Move, ReversibleGameStateDelta};
 use crate::math::*;
 use crate::board::*;
@@ -327,7 +327,7 @@ pub(crate) type PseudoLegalMoves<G> = FxHashMap<<G as BoardGeometryExt>::Tile, F
 /// controlled by a single player throughout the entire game.
 #[derive(Default, Clone, Debug)]
 pub(crate) struct MoveCache<G: BoardGeometry> {
-    applied_moves: usize,
+    pub(crate) applied_moves: usize,
     moves: im::OrdMap<<G as BoardGeometryExt>::Tile, PieceMoves<G>>,
     influence: PieceMovesInfluence<G>,
 }
@@ -345,6 +345,12 @@ impl<G: BoardGeometry> MoveCache<G> {
     }
 
     /// Invalidates moves based on moves played since this function was last called.
+    ///
+    /// Safety: Invalidation assumes that moves are only added to the `move_log` and never removed
+    /// or changed. However, the function `MoveLog::undo` does remove moves from the `MoveLog`.
+    /// It might be worth it to change this function so that it automatically detects the shared
+    /// moves of the move log applied to this `MoveCache` in the previous call and the current
+    /// `move_log`, and then invalidates the unmatched moves from both.
     pub(crate) fn invalidate_recent(
         &mut self,
         move_log: &MoveLog<G>,
@@ -368,7 +374,7 @@ impl<G: BoardGeometry> MoveCache<G> {
 
     /// Invalidates moves dependent on the state affected by the provided `delta`.
     /// Returns a set of tiles for which moves need to be regenerated.
-    fn invalidate(
+    pub(crate) fn invalidate(
         &mut self,
         delta: &ReversibleGameStateDelta<G>,
         removed_moves: &mut Vec<(<G as BoardGeometryExt>::Tile, PieceMoves<G>)>,
