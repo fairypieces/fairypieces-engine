@@ -11,19 +11,19 @@ concurrency = ["rayon"]
 default = ["concurrency"]
 
 [dependencies]
-generic-array = "0.14.4"
-lazy_static = "1.4.0"
-smallvec = "1.4.2"
-itertools = "0.10.0"
-colored = "2.0.0"
+generic-array = "0.14.7"
+lazy_static = "1.4"
+smallvec = "1.11.0"
+itertools = "0.11.0"
+colored = "2.0"
 replace_with = "0.1.7"
-dyn-clone = "1.0.4"
+dyn-clone = "1.0"
 hibitset = "0.6.3"
 backtrace = "0.3"
-im = "15.0.0"
+im = "15.1"
 fxhash = "0.2.1"
-sealed = "0.1"
-rayon = { version = "1.5.0", optional = true }
+sealed = "0.5.0"
+rayon = { version = "1.7", optional = true }
 
 [profile.dev]
 opt-level = 3 # all optimizations
