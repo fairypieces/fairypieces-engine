@@ -1,16 +1,16 @@
+use crate::math::*;
+use crate::{Game, GameEvaluation, GameRules, GameState};
+use fxhash::FxHashSet;
+use generic_array::typenum::{self, Unsigned};
+use generic_array::{arr, ArrayLength, GenericArray};
+use lazy_static::lazy_static;
+use smallvec::{smallvec, SmallVec};
+use std::borrow::Cow;
 use std::fmt::Debug;
+use std::fmt::Write;
+use std::hash::Hash;
 use std::marker::PhantomData;
 use std::ops::{Mul, Neg};
-use std::hash::Hash;
-use std::borrow::Cow;
-use std::fmt::Write;
-use generic_array::{GenericArray, ArrayLength, arr};
-use generic_array::typenum::{self, Unsigned};
-use lazy_static::lazy_static;
-use smallvec::{SmallVec, smallvec};
-use fxhash::FxHashSet;
-use crate::math::*;
-use crate::{Game, GameRules, GameState, GameEvaluation};
 
 /// A board is a grid of tiles (cells) on which the game is played.
 #[derive(Debug, Clone, Default)]
@@ -20,9 +20,7 @@ pub struct Board<G: BoardGeometry> {
 
 impl<G: BoardGeometry> Board<G> {
     pub fn new(tiles: BoardTiles<G>) -> Self {
-        Self {
-            tiles
-        }
+        Self { tiles }
     }
 }
 
@@ -98,7 +96,9 @@ pub trait TileTypes = Unsigned;
 
 /// Defines the shape of the board and its properties, such as the coordinate system and useful
 /// transformations.
-pub trait BoardGeometry: Clone + Copy + Default + PartialEq + Eq + PartialOrd + Ord + Hash + Debug {
+pub trait BoardGeometry:
+    Clone + Copy + Default + PartialEq + Eq + PartialOrd + Ord + Hash + Debug
+{
     /// The number of integer coordinates used to describe a tile.
     type CoordinateDimensions: CoordinateDimensions + Debug;
 
@@ -110,7 +110,9 @@ pub trait BoardGeometry: Clone + Copy + Default + PartialEq + Eq + PartialOrd + 
 
     fn get_tile_type(tile: IVec<Self::CoordinateDimensions>) -> usize;
 
-    fn get_reflective_symmetries() -> &'static [AxisPermutation<Self>] where Self: Sized;
+    fn get_reflective_symmetries() -> &'static [AxisPermutation<Self>]
+    where
+        Self: Sized;
 
     fn get_rotations() -> SmallVec<[AxisPermutation<Self>; 3]>;
 
@@ -148,7 +150,8 @@ impl BoardGeometry for TriangularBoardGeometry {
         (tile[0] + tile[1] + tile[2]) as usize
     }
 
-    fn get_reflective_symmetries() -> &'static [AxisPermutation<Self>] where 
+    fn get_reflective_symmetries() -> &'static [AxisPermutation<Self>]
+    where
         Self: Sized,
     {
         lazy_static! {
@@ -184,11 +187,11 @@ impl BoardGeometry for TriangularBoardGeometry {
         //
         // ⡷⠶⠶⠶⠶⠶⠶⣿⡷⠶⠶⠶⠶⠶⠶⣿⡷⠶⠶⠶⠶⠶⠶⣿⡷⠶⠶⠶
         // ⢻⡄Lbl ⣼⠃⢻⡄Lbl ⣼⠃⢻⡄Lbl ⣼⠃⢻⡄Lb
-        //  ⢻⡄  ⣼⠃  ⢻⡄  ⣼⠃  ⢻⡄  ⣼⠃  ⢻⡄ 
+        //  ⢻⡄  ⣼⠃  ⢻⡄  ⣼⠃  ⢻⡄  ⣼⠃  ⢻⡄
         // l ⢻⡄⣼⠃Lbl ⢻⡄⣼⠃Lbl ⢻⡄⣼⠃Lbl ⢻⡄
         // ⠶⠶⠶⣿⡷⠶⠶⠶⠶⠶⠶⣿⡷⠶⠶⠶⠶⠶⠶⣿⡷⠶⠶⠶⠶⠶⠶⣿
         // l ⣼⠃⢻⡄Lbl ⣼⠃⢻⡄Lbl ⣼⠃⢻⡄Lbl ⣼⠃
-        //  ⣼⠃  ⢻⡄  ⣼⠃  ⢻⡄  ⣼⠃  ⢻⡄  ⣼⠃ 
+        //  ⣼⠃  ⢻⡄  ⣼⠃  ⢻⡄  ⣼⠃  ⢻⡄  ⣼⠃
         // ⣼⠃Lbl ⢻⡄⣼⠃Lbl ⢻⡄⣼⠃Lbl ⢻⡄⣼⠃Lb
         // ⡷⠶⠶⠶⠶⠶⠶⣿⡷⠶⠶⠶⠶⠶⠶⣿⡷⠶⠶⠶⠶⠶⠶⣿⡷⠶⠶⠶
         //
@@ -204,11 +207,11 @@ impl BoardGeometry for TriangularBoardGeometry {
         // ⠶⠶⣿⡷⠶⠶⠶⠶⣿⡷⠶⠶⠶⠶⣿⡷⠶⠶⠶
         //
         // ───╳─────╳─────╳─────╳───
-        //   ╱ ╲Lbl╱ ╲Lbl╱ ╲Lbl╱ ╲  
-        //  ╱Lbl╲ ╱Lbl╲ ╱Lbl╲ ╱Lbl╲ 
+        //   ╱ ╲Lbl╱ ╲Lbl╱ ╲Lbl╱ ╲
+        //  ╱Lbl╲ ╱Lbl╲ ╱Lbl╲ ╱Lbl╲
         // ╳─────╳─────╳─────╳─────╳
-        //  ╲Lbl╱ ╲Lbl╱ ╲Lbl╱ ╲Lbl╱ 
-        //   ╲ ╱Lbl╲ ╱Lbl╲ ╱Lbl╲ ╱  
+        //  ╲Lbl╱ ╲Lbl╱ ╲Lbl╱ ╲Lbl╱
+        //   ╲ ╱Lbl╲ ╱Lbl╲ ╱Lbl╲ ╱
         // ───╳─────╳─────╳─────╳───
         //
         todo!()
@@ -230,7 +233,8 @@ impl BoardGeometry for SquareBoardGeometry {
         0
     }
 
-    fn get_reflective_symmetries() -> &'static [AxisPermutation<Self>] where 
+    fn get_reflective_symmetries() -> &'static [AxisPermutation<Self>]
+    where
         Self: Sized,
     {
         lazy_static! {
@@ -259,10 +263,10 @@ impl BoardGeometry for SquareBoardGeometry {
 
     fn get_rotations() -> SmallVec<[AxisPermutation<Self>; 3]> {
         smallvec![
-            [(false, 0),  (false, 1)].into(),
-            [( true, 1),  (false, 0)].into(),
-            [( true, 0),  ( true, 1)].into(),
-            [(false, 1),  ( true, 0)].into(),
+            [(false, 0), (false, 1)].into(),
+            [(true, 1), (false, 0)].into(),
+            [(true, 0), (true, 1)].into(),
+            [(false, 1), (true, 0)].into(),
         ]
     }
 
@@ -285,7 +289,10 @@ impl BoardGeometry for SquareBoardGeometry {
         // ┼───┼───┼───┼───┼
         //
         use colored::*;
-        assert!(game_rules.players.get() <= 2, "Printing a game with more than 2 players is currently not supported.");
+        assert!(
+            game_rules.players.get() <= 2,
+            "Printing a game with more than 2 players is currently not supported."
+        );
 
         let mut result = String::new();
         let mut min: IVec2 = [IVecComponent::MAX; 2].into();
@@ -354,13 +361,19 @@ impl BoardGeometry for SquareBoardGeometry {
             board: &Board<SquareBoardGeometry>,
             game_state: &GameState<SquareBoardGeometry>,
         ) -> [[char; 3]; 3] {
-            let n: SmallVec<[SmallVec<[bool; 3]>; 3]> = (-1..=1).into_iter().map(|y| {
-                (-1..=1).into_iter().map(|x| {
-                    let offset = IVec2::from([x, y]);
-                    let absolute = tile + offset;
-                    game_state.tile(board, absolute).is_some()
-                }).collect()
-            }).collect();
+            let n: SmallVec<[SmallVec<[bool; 3]>; 3]> = (-1..=1)
+                .into_iter()
+                .map(|y| {
+                    (-1..=1)
+                        .into_iter()
+                        .map(|x| {
+                            let offset = IVec2::from([x, y]);
+                            let absolute = tile + offset;
+                            game_state.tile(board, absolute).is_some()
+                        })
+                        .collect()
+                })
+                .collect();
 
             fn get_corner(offset: [usize; 2], n: &SmallVec<[SmallVec<[bool; 3]>; 3]>) -> char {
                 get_border(
@@ -396,30 +409,31 @@ impl BoardGeometry for SquareBoardGeometry {
         ];
 
         for y in (min[1]..=max[1]).into_iter().rev() {
-            let mut row = [
-                String::new(),
-                String::new(),
-                String::new(),
-            ];
+            let mut row = [String::new(), String::new(), String::new()];
 
             for x in min[0]..=max[0] {
                 let tile: IVec2 = [x, y].into();
                 let border = tile_to_border(tile, &game_rules.board, game_state);
-                let label = game_state.tile(&game_rules.board, tile).map(|tile| {
-                    if let Some(piece) = tile.get_piece() {
-                        let definition = piece.get_definition(&game_rules.piece_set);
-                        let title = &definition.title[0..std::cmp::min(3, definition.title.len())];
-                        let colors = COLORS[piece.owner as usize];
+                let label = game_state
+                    .tile(&game_rules.board, tile)
+                    .map(|tile| {
+                        if let Some(piece) = tile.get_piece() {
+                            let definition = piece.get_definition(&game_rules.piece_set);
+                            let title =
+                                &definition.title[0..std::cmp::min(3, definition.title.len())];
+                            let colors = COLORS[piece.owner as usize];
 
-                        Cow::Owned(
-                            title.truecolor(colors[0][0], colors[0][1], colors[0][2])
-                                 .on_truecolor(colors[1][0], colors[1][1], colors[1][2])
-                                 .to_string()
-                        )
-                    } else {
-                        Cow::Borrowed("   ")
-                    }
-                }).unwrap_or(Cow::Borrowed(" × "));
+                            Cow::Owned(
+                                title
+                                    .truecolor(colors[0][0], colors[0][1], colors[0][2])
+                                    .on_truecolor(colors[1][0], colors[1][1], colors[1][2])
+                                    .to_string(),
+                            )
+                        } else {
+                            Cow::Borrowed("   ")
+                        }
+                    })
+                    .unwrap_or(Cow::Borrowed(" × "));
 
                 if x == min[0] {
                     row[0].push(border[2][0]);
@@ -466,7 +480,8 @@ impl BoardGeometry for HexagonalBoardGeometry {
         0
     }
 
-    fn get_reflective_symmetries() -> &'static [AxisPermutation<Self>] where
+    fn get_reflective_symmetries() -> &'static [AxisPermutation<Self>]
+    where
         Self: Sized,
     {
         lazy_static! {
@@ -496,7 +511,8 @@ impl BoardGeometry for HexagonalBoardGeometry {
     }
 
     fn get_rotations() -> SmallVec<[AxisPermutation<Self>; 3]> {
-        let cycles: SmallVec<[AxisPermutation<Self>; 3]> = AxisPermutation::<Self>::cycle_axes().collect();
+        let cycles: SmallVec<[AxisPermutation<Self>; 3]> =
+            AxisPermutation::<Self>::cycle_axes().collect();
 
         smallvec![
             cycles[0].clone(),
@@ -573,7 +589,8 @@ pub struct AxisPermutation<G: BoardGeometry> {
 
 impl<G: BoardGeometry> Default for AxisPermutation<G> {
     fn default() -> Self {
-        let mut signed_axes: GenericArray<(bool, u8), <G as BoardGeometry>::CoordinateDimensions> = Default::default();
+        let mut signed_axes: GenericArray<(bool, u8), <G as BoardGeometry>::CoordinateDimensions> =
+            Default::default();
 
         for (index, &mut (_, ref mut axis)) in signed_axes.iter_mut().enumerate() {
             *axis = index as u8;
@@ -583,7 +600,11 @@ impl<G: BoardGeometry> Default for AxisPermutation<G> {
     }
 }
 
-impl<G: BoardGeometry, A: Into<GenericArray<(bool, u8), <G as BoardGeometry>::CoordinateDimensions>>> From<A> for AxisPermutation<G> {
+impl<
+        G: BoardGeometry,
+        A: Into<GenericArray<(bool, u8), <G as BoardGeometry>::CoordinateDimensions>>,
+    > From<A> for AxisPermutation<G>
+{
     fn from(signed_axes: A) -> Self {
         Self {
             signed_axes: signed_axes.into(),
@@ -606,23 +627,29 @@ impl<G: BoardGeometry> Transformation<G> for AxisPermutation<G> {
     /// applying `rhs` followed by `lhs`.
     fn combine(lhs: &Self, rhs: &Self) -> Self {
         AxisPermutation {
-            signed_axes: GenericArray::from_exact_iter(lhs.signed_axes.iter().map(|(lhs_sign, lhs_axis)| {
-                let (rhs_sign, rhs_axis) = rhs.signed_axes[*lhs_axis as usize];
-                (rhs_sign ^ lhs_sign, rhs_axis)
-            })).unwrap(),
+            signed_axes: GenericArray::from_exact_iter(lhs.signed_axes.iter().map(
+                |(lhs_sign, lhs_axis)| {
+                    let (rhs_sign, rhs_axis) = rhs.signed_axes[*lhs_axis as usize];
+                    (rhs_sign ^ lhs_sign, rhs_axis)
+                },
+            ))
+            .unwrap(),
         }
     }
 
     fn apply(&self, tile: <G as BoardGeometryExt>::Tile) -> <G as BoardGeometryExt>::Tile {
         let mut result = tile;
 
-        result.iter_mut().zip(self.signed_axes.iter()).for_each(|(c, (sign, axis))| {
-            *c = tile[*axis as usize];
+        result
+            .iter_mut()
+            .zip(self.signed_axes.iter())
+            .for_each(|(c, (sign, axis))| {
+                *c = tile[*axis as usize];
 
-            if *sign {
-                *c = -*c;
-            }
-        });
+                if *sign {
+                    *c = -*c;
+                }
+            });
 
         result
     }
@@ -643,16 +670,20 @@ impl<G: BoardGeometry> Neg for AxisPermutation<G> {
 impl<G: BoardGeometry> AxisPermutation<G> {
     /// Returns all unique transformations mapping axes to other axes while preserving their order.
     /// In 3 dimensions, those would be: XYZ, ZXY, YZX.
-    pub fn cycle_axes() -> impl Iterator<Item=Self> {
-        (0..<G::CoordinateDimensions as Unsigned>::to_u8()).rev().map(|rotation| {
-            let axes = (0..<G::CoordinateDimensions as Unsigned>::to_u8()).map(|axis| {
-                (axis + rotation + 1) % <G::CoordinateDimensions as Unsigned>::to_u8()
-            }).map(|axis| (false, axis));
+    pub fn cycle_axes() -> impl Iterator<Item = Self> {
+        (0..<G::CoordinateDimensions as Unsigned>::to_u8())
+            .rev()
+            .map(|rotation| {
+                let axes = (0..<G::CoordinateDimensions as Unsigned>::to_u8())
+                    .map(|axis| {
+                        (axis + rotation + 1) % <G::CoordinateDimensions as Unsigned>::to_u8()
+                    })
+                    .map(|axis| (false, axis));
 
-            AxisPermutation {
-                signed_axes: GenericArray::from_exact_iter(axes).unwrap(),
-            }
-        })
+                AxisPermutation {
+                    signed_axes: GenericArray::from_exact_iter(axes).unwrap(),
+                }
+            })
     }
 
     /// Returns the product of `B * A * B^-1`

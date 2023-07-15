@@ -1,11 +1,15 @@
-use std::hash::Hash;
-use std::ops::{Deref, DerefMut, Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign};
-use std::fmt::{Display, Debug};
 use generic_array::typenum;
-use generic_array::{GenericArray, ArrayLength};
+use generic_array::{ArrayLength, GenericArray};
+use std::fmt::{Debug, Display};
+use std::hash::Hash;
+use std::ops::{
+    Add, AddAssign, Deref, DerefMut, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub,
+    SubAssign,
+};
 
 pub type IVecComponent = i16;
-pub trait IVecLength = ArrayLength<IVecComponent, ArrayType: Copy> + Hash + PartialEq + Eq + PartialOrd + Ord;
+pub trait IVecLength =
+    ArrayLength<IVecComponent, ArrayType: Copy> + Hash + PartialEq + Eq + PartialOrd + Ord;
 
 #[derive(Copy, Clone, Debug, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]

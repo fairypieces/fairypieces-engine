@@ -1,18 +1,16 @@
-use std::marker::PhantomData;
-use std::fmt::Debug;
-use std::collections::{HashMap, hash_map::Entry};
-use fxhash::FxHashMap;
-use dyn_clone::DynClone;
 use crate::delta::*;
 use crate::*;
+use dyn_clone::DynClone;
+use fxhash::FxHashMap;
+use std::collections::{hash_map::Entry, HashMap};
+use std::fmt::Debug;
+use std::marker::PhantomData;
 
 /// The outcome of a finished [`Game`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Outcome {
     /// The winner of the game has been decided.
-    Decisive {
-        winner: PlayerIndex,
-    },
+    Decisive { winner: PlayerIndex },
     /// The game resulted in a draw.
     Draw,
 }
@@ -23,10 +21,15 @@ pub enum Outcome {
 pub trait VictoryCondition<G: BoardGeometry>: Send + Sync + Debug + DynClone {
     /// Determines the outcome of a game at the current state.
     /// Not to be called directly, use [`Game::get_outcome`] instead.
-    fn evaluate(&self, game: &Game<G, NotEvaluated>, available_moves: &AvailableMoves<G>) -> Option<Outcome>;
+    fn evaluate(
+        &self,
+        game: &Game<G, NotEvaluated>,
+        available_moves: &AvailableMoves<G>,
+    ) -> Option<Outcome>;
 
     /// Determines whether a pseudo-legal move is legal.
-    fn is_move_legal(&self, game: &Game<G, NotEvaluated>, mv: &ReversibleGameStateDelta<G>) -> bool;
+    fn is_move_legal(&self, game: &Game<G, NotEvaluated>, mv: &ReversibleGameStateDelta<G>)
+        -> bool;
 }
 
 dyn_clone::clone_trait_object!(<G> VictoryCondition<G> where G: BoardGeometry);
@@ -37,11 +40,19 @@ dyn_clone::clone_trait_object!(<G> VictoryCondition<G> where G: BoardGeometry);
 pub struct NoVictoryCondition;
 
 impl<G: BoardGeometry> VictoryCondition<G> for NoVictoryCondition {
-    fn evaluate(&self, _game: &Game<G, NotEvaluated>, _available_moves: &AvailableMoves<G>) -> Option<Outcome> {
+    fn evaluate(
+        &self,
+        _game: &Game<G, NotEvaluated>,
+        _available_moves: &AvailableMoves<G>,
+    ) -> Option<Outcome> {
         None
     }
 
-    fn is_move_legal(&self, _game: &Game<G, NotEvaluated>, _mv: &ReversibleGameStateDelta<G>) -> bool {
+    fn is_move_legal(
+        &self,
+        _game: &Game<G, NotEvaluated>,
+        _mv: &ReversibleGameStateDelta<G>,
+    ) -> bool {
         true
     }
 }
@@ -85,15 +96,22 @@ where
     G: BoardGeometry + Send + Sync + Debug + Clone,
     C: Send + Sync + Debug + Clone + VictoryCondition<G> + 'static,
 {
-    fn evaluate(&self, game: &Game<G, NotEvaluated>, available_moves: &AvailableMoves<G>) -> Option<Outcome> {
+    fn evaluate(
+        &self,
+        game: &Game<G, NotEvaluated>,
+        available_moves: &AvailableMoves<G>,
+    ) -> Option<Outcome> {
         if let Some(outcome) = self.inner.evaluate(game, available_moves) {
             return Some(outcome);
         }
 
         if available_moves.moves().count() == 0 {
             // The next player, who may be the winner.
-            let next_player = (game.move_log().current_state().current_player_index() + 1) % game.rules().players().get() as PlayerIndex;
-            let loss_outcome = Outcome::Decisive { winner: next_player };
+            let next_player = (game.move_log().current_state().current_player_index() + 1)
+                % game.rules().players().get() as PlayerIndex;
+            let loss_outcome = Outcome::Decisive {
+                winner: next_player,
+            };
 
             match self.stalemate_evaluation {
                 StalemateEvaluation::Loss => Some(loss_outcome),
@@ -126,14 +144,18 @@ where
                         // Draw by stalemate.
                         Some(Outcome::Draw)
                     }
-                },
+                }
             }
         } else {
             None
         }
     }
 
-    fn is_move_legal(&self, game: &Game<G, NotEvaluated>, mv: &ReversibleGameStateDelta<G>) -> bool {
+    fn is_move_legal(
+        &self,
+        game: &Game<G, NotEvaluated>,
+        mv: &ReversibleGameStateDelta<G>,
+    ) -> bool {
         // FIXME: Replace Box with Arc so as to avoid unnecessary allocations
         let defending_game = game.clone_with_victory_conditions(Box::new(self.inner.clone()));
 
@@ -153,7 +175,7 @@ where
                     return false;
                 }
             }
-        };
+        }
 
         true
     }
@@ -189,16 +211,18 @@ pub struct RoyalVictoryCondition {
 
 impl RoyalVictoryCondition {
     pub fn new<G: BoardGeometry>(ty: RoyalVictoryType, initial_state: &GameState<G>) -> Self {
-        let initial_piece_count_per_player = initial_state.pieces.values()
+        let initial_piece_count_per_player = initial_state
+            .pieces
+            .values()
             .map(|piece| (piece.owner(), piece.definition_index()))
             .fold(HashMap::default(), |mut acc, key| {
                 match acc.entry(key) {
                     Entry::Vacant(entry) => {
                         entry.insert(1);
-                    },
+                    }
                     Entry::Occupied(ref mut entry) => {
                         *entry.get_mut() += 1;
-                    },
+                    }
                 }
 
                 acc
@@ -214,19 +238,39 @@ impl RoyalVictoryCondition {
         }
     }
 
-    pub fn with_min_piece_count(mut self, player_index: PlayerIndex, piece_definition_index: PieceDefinitionIndex, min_piece_count: usize) -> Self {
+    pub fn with_min_piece_count(
+        mut self,
+        player_index: PlayerIndex,
+        piece_definition_index: PieceDefinitionIndex,
+        min_piece_count: usize,
+    ) -> Self {
         if min_piece_count > 0 {
-            self.min_piece_count_per_player.insert((player_index, piece_definition_index), min_piece_count);
+            self.min_piece_count_per_player
+                .insert((player_index, piece_definition_index), min_piece_count);
         } else {
-            self.min_piece_count_per_player.remove(&(player_index, piece_definition_index));
+            self.min_piece_count_per_player
+                .remove(&(player_index, piece_definition_index));
         }
 
         self
     }
 
-    pub fn with_max_takes_of_piece(self, player_index: PlayerIndex, piece_definition_index: PieceDefinitionIndex, max_takes: usize) -> Self {
-        if let Some(initial_count) = self.initial_piece_count_per_player.get(&(player_index, piece_definition_index)).cloned() {
-            self.with_max_takes_of_piece(player_index, piece_definition_index, initial_count.saturating_sub(max_takes))
+    pub fn with_max_takes_of_piece(
+        self,
+        player_index: PlayerIndex,
+        piece_definition_index: PieceDefinitionIndex,
+        max_takes: usize,
+    ) -> Self {
+        if let Some(initial_count) = self
+            .initial_piece_count_per_player
+            .get(&(player_index, piece_definition_index))
+            .cloned()
+        {
+            self.with_max_takes_of_piece(
+                player_index,
+                piece_definition_index,
+                initial_count.saturating_sub(max_takes),
+            )
         } else {
             self
         }
@@ -234,16 +278,33 @@ impl RoyalVictoryCondition {
 }
 
 impl<G: BoardGeometry> VictoryCondition<G> for RoyalVictoryCondition {
-    fn evaluate(&self, game: &Game<G, NotEvaluated>, _available_moves: &AvailableMoves<G>) -> Option<Outcome> {
+    fn evaluate(
+        &self,
+        game: &Game<G, NotEvaluated>,
+        _available_moves: &AvailableMoves<G>,
+    ) -> Option<Outcome> {
         let state = game.move_log().current_state();
         let rules = game.rules();
         // Initialize piece counts with all piece definitions and counts of 0
-        let piece_counts_per_player = (0..game.rules().piece_set().definitions().len()).into_iter()
+        let piece_counts_per_player = (0..game.rules().piece_set().definitions().len())
+            .into_iter()
             .flat_map(|definition_index| {
-                (0..game.rules().players().get()).into_iter()
-                    .map(move |player_index| ((player_index as PlayerIndex, definition_index as PieceDefinitionIndex), 0))
-            }).collect::<FxHashMap<(PlayerIndex, PieceDefinitionIndex), usize>>();
-        let piece_counts_per_player = state.pieces.values()
+                (0..game.rules().players().get())
+                    .into_iter()
+                    .map(move |player_index| {
+                        (
+                            (
+                                player_index as PlayerIndex,
+                                definition_index as PieceDefinitionIndex,
+                            ),
+                            0,
+                        )
+                    })
+            })
+            .collect::<FxHashMap<(PlayerIndex, PieceDefinitionIndex), usize>>();
+        let piece_counts_per_player = state
+            .pieces
+            .values()
             .map(|piece| (piece.owner(), piece.definition_index()))
             .fold(piece_counts_per_player, |mut acc, key| {
                 *acc.get_mut(&key).unwrap() += 1;
@@ -254,28 +315,35 @@ impl<G: BoardGeometry> VictoryCondition<G> for RoyalVictoryCondition {
             Quantifier::All => true,
             Quantifier::Any => false,
         };
-        let initial_player_evaluations = (0..rules.players().get()).into_iter()
+        let initial_player_evaluations = (0..rules.players().get())
+            .into_iter()
             .map(|player| (player as PlayerIndex, initial_player_evaluation))
             .collect::<FxHashMap<PlayerIndex, bool>>();
 
-        let players_alive: Vec<PlayerIndex> = self.min_piece_count_per_player.iter()
+        let players_alive: Vec<PlayerIndex> = self
+            .min_piece_count_per_player
+            .iter()
             .map(move |(&(player, piece), min_count)| {
-                let insufficient_count = piece_counts_per_player.get(&(player, piece))
+                let insufficient_count = piece_counts_per_player
+                    .get(&(player, piece))
                     .map(|count| *count < *min_count)
                     .unwrap_or(false);
 
                 (player, insufficient_count)
             })
-            .fold(initial_player_evaluations, |mut acc, (player, insufficient_count)| {
-                let loss = acc.get_mut(&player).unwrap();
+            .fold(
+                initial_player_evaluations,
+                |mut acc, (player, insufficient_count)| {
+                    let loss = acc.get_mut(&player).unwrap();
 
-                match self.loss_when_insufficient_count_by {
-                    Quantifier::All => *loss &= insufficient_count,
-                    Quantifier::Any => *loss |= insufficient_count,
-                }
+                    match self.loss_when_insufficient_count_by {
+                        Quantifier::All => *loss &= insufficient_count,
+                        Quantifier::Any => *loss |= insufficient_count,
+                    }
 
-                acc
-            })
+                    acc
+                },
+            )
             .into_iter()
             .filter(|(_, loss)| !loss)
             .map(|(player, _)| player)
@@ -292,9 +360,15 @@ impl<G: BoardGeometry> VictoryCondition<G> for RoyalVictoryCondition {
         }
     }
 
-    fn is_move_legal(&self, game: &Game<G, NotEvaluated>, mv: &ReversibleGameStateDelta<G>) -> bool {
+    fn is_move_legal(
+        &self,
+        game: &Game<G, NotEvaluated>,
+        mv: &ReversibleGameStateDelta<G>,
+    ) -> bool {
         let current_player = game.move_log().current_state().current_player_index();
-        let game = game.clone().append_delta_unchecked_without_evaluation(mv.clone());
+        let game = game
+            .clone()
+            .append_delta_unchecked_without_evaluation(mv.clone());
 
         // Do not let the player make a move that result in them lose the game.
         // Evaluation does not require available moves to be known, hence we can pass

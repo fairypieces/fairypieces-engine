@@ -1,6 +1,6 @@
-use std::fmt::Debug;
-use std::collections::BTreeMap;
 use crate::*;
+use std::collections::BTreeMap;
+use std::fmt::Debug;
 
 /// A move is made up of a normalized state delta and a final tile which is used for selecting this
 /// move in UI.
@@ -131,7 +131,11 @@ impl<G: BoardGeometry> GameStateDelta<G> {
         self.affected_pieces.insert(tile, piece);
     }
 
-    pub fn set_initial(&mut self, tile: <G as BoardGeometryExt>::Tile, mut piece: Option<Piece<G>>) {
+    pub fn set_initial(
+        &mut self,
+        tile: <G as BoardGeometryExt>::Tile,
+        mut piece: Option<Piece<G>>,
+    ) {
         if let Some(piece) = piece.as_mut() {
             piece.make_initial();
         }
@@ -147,7 +151,9 @@ impl<G: BoardGeometry> GameStateDelta<G> {
         self.next_player
     }
 
-    pub fn iter(&self) -> impl Iterator<Item=(&'_ <G as BoardGeometryExt>::Tile, &'_ Option<Piece<G>>)> {
+    pub fn iter(
+        &self,
+    ) -> impl Iterator<Item = (&'_ <G as BoardGeometryExt>::Tile, &'_ Option<Piece<G>>)> {
         self.affected_pieces.iter()
     }
 
@@ -163,18 +169,18 @@ impl<G: BoardGeometry> GameStateDelta<G> {
     ///
     /// In other words, returns `true` if `rhs` is `lhs` and something extra.
     pub fn is_part_of(&self, rhs: &GameStateDelta<G>) -> bool {
-        true
-            && self.next_player == rhs.next_player
+        true && self.next_player == rhs.next_player
             && self.affected_pieces.len() <= rhs.affected_pieces.len()
             && self.affected_flags.len() <= rhs.affected_flags.len()
-            && self.affected_pieces.iter().all(|(tile, piece)| {
-                rhs.get(*tile) == Some(piece.as_ref())
-            })
+            && self
+                .affected_pieces
+                .iter()
+                .all(|(tile, piece)| rhs.get(*tile) == Some(piece.as_ref()))
             && self.affected_flags.iter().all(|(tile, lhs_flags)| {
                 if let Some(rhs_flags) = rhs.affected_flags.get(tile) {
-                    lhs_flags.iter().all(|(flag, value)| {
-                        rhs_flags.get(flag) == Some(value)
-                    })
+                    lhs_flags
+                        .iter()
+                        .all(|(flag, value)| rhs_flags.get(flag) == Some(value))
                 } else {
                     false
                 }
@@ -182,7 +188,12 @@ impl<G: BoardGeometry> GameStateDelta<G> {
     }
 
     /// Removes ineffective actions.
-    pub fn normalize(self, state: &GameState<G>, board: &Board<G>, move_type: MoveType) -> ReversibleGameStateDelta<G> {
+    pub fn normalize(
+        self,
+        state: &GameState<G>,
+        board: &Board<G>,
+        move_type: MoveType,
+    ) -> ReversibleGameStateDelta<G> {
         #[cfg(debug_assertions)]
         let self_clone = self.clone();
 
@@ -197,29 +208,35 @@ impl<G: BoardGeometry> GameStateDelta<G> {
         // Note: Using `drain` on a `BTreeMap` is only efficient if the number of removed elements is
         // relatively low. In other cases, it is best to create a new tree from an iterator of
         // key-value pairs.
-        result.forward.affected_pieces.retain(|tile, forward_piece| {
-            if let Some(current_tile) = state.tile(board, *tile) {
-                current_tile.get_piece() != forward_piece.as_ref()
-            } else {
-                false
-            }
-        });
+        result
+            .forward
+            .affected_pieces
+            .retain(|tile, forward_piece| {
+                if let Some(current_tile) = state.tile(board, *tile) {
+                    current_tile.get_piece() != forward_piece.as_ref()
+                } else {
+                    false
+                }
+            });
 
-        result.backward.affected_pieces = result.forward.affected_pieces.keys().map(|tile| {
-            // Unwrap Safety: Only pieces of existing tiles were retained in `forward`.
-            let backward_tile = state.tile(board, *tile).unwrap();
-            let backward_piece = backward_tile.get_piece().cloned();
+        result.backward.affected_pieces = result
+            .forward
+            .affected_pieces
+            .keys()
+            .map(|tile| {
+                // Unwrap Safety: Only pieces of existing tiles were retained in `forward`.
+                let backward_tile = state.tile(board, *tile).unwrap();
+                let backward_piece = backward_tile.get_piece().cloned();
 
-            (*tile, backward_piece)
-        }).collect();
+                (*tile, backward_piece)
+            })
+            .collect();
 
         // Keep altered flags only.
         result.forward.affected_flags.retain(|tile, forward_flags| {
             if let Some(current_tile) = state.tile(board, *tile) {
                 if let Some(current_flags) = current_tile.get_flags() {
-                    forward_flags.retain(|flag, value| {
-                        current_flags.contains(*flag) != *value
-                    });
+                    forward_flags.retain(|flag, value| current_flags.contains(*flag) != *value);
 
                     !forward_flags.is_empty()
                 } else {
@@ -232,19 +249,26 @@ impl<G: BoardGeometry> GameStateDelta<G> {
 
         result.backward.affected_flags = result.forward.affected_flags.clone();
 
-        result.backward.affected_flags.values_mut().for_each(|backward_flags| {
-            for value in backward_flags.values_mut() {
-                *value ^= true;
-            }
-        });
+        result
+            .backward
+            .affected_flags
+            .values_mut()
+            .for_each(|backward_flags| {
+                for value in backward_flags.values_mut() {
+                    *value ^= true;
+                }
+            });
 
         // In debug mode, verify the validity of created `ReversibleGameStateDelta`.
         #[cfg(debug_assertions)]
-        debug_assert_eq!(result, ReversibleGameStateDelta {
-            forward: &state.clone().apply(self_clone.clone()) - state,
-            backward: state - &state.clone().apply(self_clone),
-            move_type: result.move_type.clone(),
-        });
+        debug_assert_eq!(
+            result,
+            ReversibleGameStateDelta {
+                forward: &state.clone().apply(self_clone.clone()) - state,
+                backward: state - &state.clone().apply(self_clone),
+                move_type: result.move_type.clone(),
+            }
+        );
 
         result
     }
@@ -272,7 +296,8 @@ impl<G: BoardGeometry> GameStateDelta<G> {
     pub fn subset_of(&self, rhs: &Self) -> bool {
         self.next_player == rhs.next_player
             && self.affected_pieces.iter().all(|(tile, piece)| {
-                rhs.affected_pieces.get(tile)
+                rhs.affected_pieces
+                    .get(tile)
                     .map(|expected_piece| piece == expected_piece)
                     .unwrap_or(false)
             })

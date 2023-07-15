@@ -1,10 +1,10 @@
-use std::collections::BTreeSet;
-use fxhash::{FxHashSet, FxHashMap};
-use crate::{Game, MoveLog};
-use crate::game::{PlayerIndex, GameState, GameEvaluation, NotEvaluated};
-use crate::delta::{Move, ReversibleGameStateDelta};
-use crate::math::*;
 use crate::board::*;
+use crate::delta::{Move, ReversibleGameStateDelta};
+use crate::game::{GameEvaluation, GameState, NotEvaluated, PlayerIndex};
+use crate::math::*;
+use crate::{Game, MoveLog};
+use fxhash::{FxHashMap, FxHashSet};
+use std::collections::BTreeSet;
 
 // TODO: Improve error types for validation.
 
@@ -19,15 +19,17 @@ pub struct PieceSet<G: BoardGeometry> {
 
 impl<G: BoardGeometry> PieceSet<G> {
     /// Validates the pieces and creates a piece set.
-    pub fn from(unvalidated_definitions: impl IntoIterator<Item=PieceDefinitionUnvalidated<G>>) -> Result<Self, ()> {
+    pub fn from(
+        unvalidated_definitions: impl IntoIterator<Item = PieceDefinitionUnvalidated<G>>,
+    ) -> Result<Self, ()> {
         let unvalidated_definitions = unvalidated_definitions.into_iter().collect::<Vec<_>>();
-        let definitions = unvalidated_definitions.clone().into_iter()
+        let definitions = unvalidated_definitions
+            .clone()
+            .into_iter()
             .map(|definition| definition.validate(&unvalidated_definitions))
             .collect::<Result<_, _>>()?;
 
-        Ok(Self {
-            definitions,
-        })
+        Ok(Self { definitions })
     }
 
     pub fn definitions(&self) -> &[PieceDefinition<G>] {
@@ -51,7 +53,10 @@ pub struct Piece<G: BoardGeometry> {
 impl<G: BoardGeometry> Piece<G> {
     // TODO: Actually validate pieces that are added to the board.
     // TODO: Possibly create an `UnvalidatedPiece` type to make it type safe.
-    pub(crate) fn check_validity(&self, definitions: &[PieceDefinitionUnvalidated<G>]) -> Result<(), ()> {
+    pub(crate) fn check_validity(
+        &self,
+        definitions: &[PieceDefinitionUnvalidated<G>],
+    ) -> Result<(), ()> {
         // TODO validate owner (team)?
         if self.definition as usize >= definitions.len() {
             return Err(());
@@ -61,10 +66,12 @@ impl<G: BoardGeometry> Piece<G> {
     }
 
     pub fn was_affected_by_move(&self, move_index: usize) -> bool {
-        self.affecting_moves.binary_search(&(move_index as u16)).is_ok()
+        self.affecting_moves
+            .binary_search(&(move_index as u16))
+            .is_ok()
     }
 
-    pub fn affecting_moves(&self) -> impl Iterator<Item=u16> + DoubleEndedIterator + '_ {
+    pub fn affecting_moves(&self) -> impl Iterator<Item = u16> + DoubleEndedIterator + '_ {
         self.affecting_moves.iter().cloned()
     }
 
@@ -103,16 +110,16 @@ impl<G: BoardGeometry> Piece<G> {
         &piece_set.definitions[self.definition as usize]
     }
 
-//     /// Clones the piece but sets the `initial` field to `false`, marking the piece
-//     /// as having been moved or affected by another piece's move.
-//     pub fn clone_moved(&self) -> Self {
-//         Self {
-//             transformation: self.transformation.clone(),
-//             definition: self.definition.clone(),
-//             owner: self.owner.clone(),
-//             affecting_moves:
-//         }
-//     }
+    //     /// Clones the piece but sets the `initial` field to `false`, marking the piece
+    //     /// as having been moved or affected by another piece's move.
+    //     pub fn clone_moved(&self) -> Self {
+    //         Self {
+    //             transformation: self.transformation.clone(),
+    //             definition: self.definition.clone(),
+    //             owner: self.owner.clone(),
+    //             affecting_moves:
+    //         }
+    //     }
 }
 
 /// An unvalidated piece definition is used to construct a [`PieceSet`]. See [`PieceDefinition`]
@@ -186,16 +193,22 @@ impl<G: BoardGeometry> PieceDefinitionUnvalidated<G> {
 
         PieceDefinition {
             title: self.title,
-            states: self.states.into_iter().map(|state| state.assume_validated()).collect(),
+            states: self
+                .states
+                .into_iter()
+                .map(|state| state.assume_validated())
+                .collect(),
             initial_states: self.initial_states.into_boxed_slice(),
             debug: self.debug,
         }
     }
 
-    fn validate(self, definitions: &[PieceDefinitionUnvalidated<G>]) -> Result<PieceDefinition<G>, ()> {
-        self.check_validity(definitions).map(move |()| {
-            self.assume_validated()
-        })
+    fn validate(
+        self,
+        definitions: &[PieceDefinitionUnvalidated<G>],
+    ) -> Result<PieceDefinition<G>, ()> {
+        self.check_validity(definitions)
+            .map(move |()| self.assume_validated())
     }
 }
 
@@ -262,9 +275,7 @@ pub enum ConditionEnum<G: BoardGeometry> {
         state_index: usize,
     },
     /// Evaluates to `true` if a tile with those coordinates is present.
-    TilePresent {
-        tile: <G as BoardGeometryExt>::Tile,
-    },
+    TilePresent { tile: <G as BoardGeometryExt>::Tile },
     /// Evaluates to `true` if the tile at the given coordinates matches the type.
     TileTypeIs {
         tile: <G as BoardGeometryExt>::Tile,
@@ -276,9 +287,7 @@ pub enum ConditionEnum<G: BoardGeometry> {
         flag: TileFlagIndex,
     },
     /// Evaluates to `true` if a piece is present on the given tile.
-    PiecePresent {
-        tile: <G as BoardGeometryExt>::Tile,
-    },
+    PiecePresent { tile: <G as BoardGeometryExt>::Tile },
     /// Evaluates to `true` if not enough moves were played to include `past_move`,
     /// if there is no piece at the given tile,
     /// or if the piece at the given coordinates was affected during that move.
@@ -290,9 +299,7 @@ pub enum ConditionEnum<G: BoardGeometry> {
         past_move: usize,
     },
     /// Evaluates to `true` if the piece has not been moved since the beginning of the game.
-    PieceInitial {
-        tile: <G as BoardGeometryExt>::Tile,
-    },
+    PieceInitial { tile: <G as BoardGeometryExt>::Tile },
     /// Evaluates to `true` if there is no piece on the tile or if the piece's definition index
     /// matches `definition_index`.
     PieceTypeIs {
@@ -307,14 +314,10 @@ pub enum ConditionEnum<G: BoardGeometry> {
     },
     /// Evaluates to `true` if there is no piece on the tile or if the piece is allied to the
     /// current player.
-    PieceControlledByAlly {
-        tile: <G as BoardGeometryExt>::Tile,
-    },
+    PieceControlledByAlly { tile: <G as BoardGeometryExt>::Tile },
     /// Evaluates to `true` if there is no piece on the tile or if the piece is an enemy to the
     /// current player.
-    PieceControlledByEnemy {
-        tile: <G as BoardGeometryExt>::Tile,
-    },
+    PieceControlledByEnemy { tile: <G as BoardGeometryExt>::Tile },
     /// Evaluates to `true` if the move that is currently being generated, made up of the actions
     /// executed on this evaluation branch, would be a legal move.
     UnfinishedMoveLegal,
@@ -333,11 +336,18 @@ pub(crate) struct MoveCache<G: BoardGeometry> {
 }
 
 impl<G: BoardGeometry> MoveCache<G> {
-    pub(crate) fn get_cached_moves_from(&self, tile: <G as BoardGeometryExt>::Tile) -> Option<&PieceMoves<G>> {
+    pub(crate) fn get_cached_moves_from(
+        &self,
+        tile: <G as BoardGeometryExt>::Tile,
+    ) -> Option<&PieceMoves<G>> {
         self.moves.get(&tile)
     }
 
-    pub(crate) fn cache_moves(&mut self, tile: <G as BoardGeometryExt>::Tile, moves: PieceMoves<G>) {
+    pub(crate) fn cache_moves(
+        &mut self,
+        tile: <G as BoardGeometryExt>::Tile,
+        moves: PieceMoves<G>,
+    ) {
         if matches!(&moves.checked_state, CheckedState::PossiblyInvalid { .. }) {
             self.influence.add(tile, &moves.checked_state);
             self.moves.insert(tile, moves);
@@ -351,10 +361,7 @@ impl<G: BoardGeometry> MoveCache<G> {
     /// It might be worth it to change this function so that it automatically detects the shared
     /// moves of the move log applied to this `MoveCache` in the previous call and the current
     /// `move_log`, and then invalidates the unmatched moves from both.
-    pub(crate) fn invalidate_recent(
-        &mut self,
-        move_log: &MoveLog<G>,
-    ) -> bool {
+    pub(crate) fn invalidate_recent(&mut self, move_log: &MoveLog<G>) -> bool {
         if self.applied_moves >= move_log.len() {
             debug_assert_eq!(self.applied_moves, move_log.len());
 
@@ -385,7 +392,13 @@ impl<G: BoardGeometry> MoveCache<G> {
                 removed_moves.push((*piece_affected_tile, moves));
             }
 
-            for second_order_tile in self.influence.piece_influenced_tiles.get(piece_affected_tile).into_iter().flatten() {
+            for second_order_tile in self
+                .influence
+                .piece_influenced_tiles
+                .get(piece_affected_tile)
+                .into_iter()
+                .flatten()
+            {
                 // FIXME: Requires Clone, consider using Arc?
                 if let Some(moves) = self.moves.remove(second_order_tile) {
                     removed_moves.push((*second_order_tile, moves));
@@ -399,7 +412,13 @@ impl<G: BoardGeometry> MoveCache<G> {
                 removed_moves.push((*flag_affected_tile, moves));
             }
 
-            for second_order_tile in self.influence.flag_influenced_tiles.get(flag_affected_tile).into_iter().flatten() {
+            for second_order_tile in self
+                .influence
+                .flag_influenced_tiles
+                .get(flag_affected_tile)
+                .into_iter()
+                .flatten()
+            {
                 // FIXME: Requires Clone, consider using Arc?
                 if let Some(moves) = self.moves.remove(second_order_tile) {
                     removed_moves.push((*second_order_tile, moves));
@@ -427,49 +446,69 @@ pub(crate) struct PieceMoves<G: BoardGeometry> {
 pub(crate) struct PieceMovesInfluence<G: BoardGeometry> {
     /// If a piece on the tile of the key was influenced, invalidate all moves generated by pieces
     /// in the values.
-    pub(crate) piece_influenced_tiles: im::OrdMap<<G as BoardGeometryExt>::Tile, im::OrdSet<<G as BoardGeometryExt>::Tile>>,
+    pub(crate) piece_influenced_tiles:
+        im::OrdMap<<G as BoardGeometryExt>::Tile, im::OrdSet<<G as BoardGeometryExt>::Tile>>,
     /// If the flags on the tile of the key were influenced, invalidate all moves generated by pieces
     /// in the values.
-    pub(crate) flag_influenced_tiles: im::OrdMap<<G as BoardGeometryExt>::Tile, im::OrdSet<<G as BoardGeometryExt>::Tile>>,
+    pub(crate) flag_influenced_tiles:
+        im::OrdMap<<G as BoardGeometryExt>::Tile, im::OrdSet<<G as BoardGeometryExt>::Tile>>,
 }
 
 impl<G: BoardGeometry> PieceMovesInfluence<G> {
-    pub(crate) fn remove(&mut self, piece_tile: <G as BoardGeometryExt>::Tile, checked_state: &CheckedState<G>) {
+    pub(crate) fn remove(
+        &mut self,
+        piece_tile: <G as BoardGeometryExt>::Tile,
+        checked_state: &CheckedState<G>,
+    ) {
         if let CheckedState::PossiblyInvalid {
             invalidating_piece_tiles,
             invalidating_flag_tiles,
-        } = checked_state {
+        } = checked_state
+        {
             let mut removed_from = FxHashSet::default();
 
             for invalidating_piece_tile in invalidating_piece_tiles {
-                self.piece_influenced_tiles.entry(*invalidating_piece_tile)
-                    .or_default().remove(&piece_tile);
+                self.piece_influenced_tiles
+                    .entry(*invalidating_piece_tile)
+                    .or_default()
+                    .remove(&piece_tile);
 
                 removed_from.insert(*invalidating_piece_tile);
             }
 
             for invalidating_flag_tile in invalidating_flag_tiles {
-                self.flag_influenced_tiles.entry(*invalidating_flag_tile)
-                    .or_default().remove(&piece_tile);
+                self.flag_influenced_tiles
+                    .entry(*invalidating_flag_tile)
+                    .or_default()
+                    .remove(&piece_tile);
             }
         } else {
             unimplemented!()
         }
     }
 
-    pub(crate) fn add(&mut self, piece_tile: <G as BoardGeometryExt>::Tile, checked_state: &CheckedState<G>) {
+    pub(crate) fn add(
+        &mut self,
+        piece_tile: <G as BoardGeometryExt>::Tile,
+        checked_state: &CheckedState<G>,
+    ) {
         if let CheckedState::PossiblyInvalid {
             invalidating_piece_tiles,
             invalidating_flag_tiles,
-        } = checked_state {
+        } = checked_state
+        {
             for invalidating_piece_tile in invalidating_piece_tiles {
-                self.piece_influenced_tiles.entry(*invalidating_piece_tile)
-                    .or_default().insert(piece_tile);
+                self.piece_influenced_tiles
+                    .entry(*invalidating_piece_tile)
+                    .or_default()
+                    .insert(piece_tile);
             }
 
             for invalidating_flag_tile in invalidating_flag_tiles {
-                self.flag_influenced_tiles.entry(*invalidating_flag_tile)
-                    .or_default().insert(piece_tile);
+                self.flag_influenced_tiles
+                    .entry(*invalidating_flag_tile)
+                    .or_default()
+                    .insert(piece_tile);
             }
         } else {
             unimplemented!()
@@ -509,13 +548,21 @@ impl<G: BoardGeometry> CheckedState<G> {
     }
 
     pub fn register_checked_piece_tile(&mut self, tile: <G as BoardGeometryExt>::Tile) {
-        if let &mut Self::PossiblyInvalid { ref mut invalidating_piece_tiles, .. } = self {
+        if let &mut Self::PossiblyInvalid {
+            ref mut invalidating_piece_tiles,
+            ..
+        } = self
+        {
             invalidating_piece_tiles.insert(tile);
         }
     }
 
     pub fn register_checked_flag_tile(&mut self, tile: <G as BoardGeometryExt>::Tile) {
-        if let &mut Self::PossiblyInvalid { ref mut invalidating_flag_tiles, .. } = self {
+        if let &mut Self::PossiblyInvalid {
+            ref mut invalidating_flag_tiles,
+            ..
+        } = self
+        {
             invalidating_flag_tiles.insert(tile);
         }
     }
@@ -543,23 +590,19 @@ impl<G: BoardGeometry> ConditionEnum<G> {
         ConditionEnum::Not(Box::new(inner))
     }
 
-    pub fn any(conditions: impl IntoIterator<Item=ConditionEnum<G>>) -> Self {
+    pub fn any(conditions: impl IntoIterator<Item = ConditionEnum<G>>) -> Self {
         ConditionEnum::Any(conditions.into_iter().collect())
     }
 
-    pub fn all(conditions: impl IntoIterator<Item=ConditionEnum<G>>) -> Self {
+    pub fn all(conditions: impl IntoIterator<Item = ConditionEnum<G>>) -> Self {
         ConditionEnum::All(conditions.into_iter().collect())
     }
 
     pub(crate) fn evaluate(&self, context: &mut ConditionEvaluationContext<'_, G>) -> bool {
         use ConditionEnum::*;
         let result = match self {
-            Any(children) => {
-                children.iter().any(|child| child.evaluate(context))
-            },
-            All(children) => {
-                children.iter().all(|child| child.evaluate(context))
-            },
+            Any(children) => children.iter().any(|child| child.evaluate(context)),
+            All(children) => children.iter().all(|child| child.evaluate(context)),
             Not(child) => !child.evaluate(context),
             MovesPlayedGreaterThanOrEqual(moves) => {
                 context.checked_state.invalidate();
@@ -568,43 +611,67 @@ impl<G: BoardGeometry> ConditionEnum<G> {
                 // of the board contains a temporary move (which was not played by any of the
                 // players) used for computing the resulting move.
                 context.game.move_log.moves.len() >= *moves + 1
-            },
-            MoveGeneratedByPiece { past_move, piece_definition } => {
+            }
+            MoveGeneratedByPiece {
+                past_move,
+                piece_definition,
+            } => {
                 if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*past_move), context) {
                     return true;
                 }
 
                 context.checked_state.invalidate();
 
-                let mv = context.game.move_log().moves().nth_back(*past_move).unwrap();
+                let mv = context
+                    .game
+                    .move_log()
+                    .moves()
+                    .nth_back(*past_move)
+                    .unwrap();
                 let move_type = mv.move_type();
 
                 move_type.definition == *piece_definition
-            },
-            MoveGeneratedByFinalState { past_move, state_index } => {
+            }
+            MoveGeneratedByFinalState {
+                past_move,
+                state_index,
+            } => {
                 if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*past_move), context) {
                     return true;
                 }
 
                 context.checked_state.invalidate();
 
-                let mv = context.game.move_log().moves().nth_back(*past_move).unwrap();
+                let mv = context
+                    .game
+                    .move_log()
+                    .moves()
+                    .nth_back(*past_move)
+                    .unwrap();
                 let move_type = mv.move_type();
 
                 move_type.final_state == *state_index
-            },
-            MoveGeneratedByVisitingMarkedState { past_move, state_index } => {
+            }
+            MoveGeneratedByVisitingMarkedState {
+                past_move,
+                state_index,
+            } => {
                 if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*past_move), context) {
                     return true;
                 }
 
                 context.checked_state.invalidate();
 
-                let mv = context.game.move_log().moves().nth_back(*past_move).unwrap();
+                let mv = context
+                    .game
+                    .move_log()
+                    .moves()
+                    .nth_back(*past_move)
+                    .unwrap();
                 let move_type = mv.move_type();
 
                 move_type.has_visited_marked_state(*state_index)
-            },
+            }
             TilePresent { tile } => {
                 // Tiles are not added or removed throughout the game, therefore no checks are
                 // recorded in `context.checked_state`.
@@ -612,7 +679,7 @@ impl<G: BoardGeometry> ConditionEnum<G> {
                 let tile = context.isometry.apply(*tile);
 
                 context.game.rules().board().tiles().contains(tile)
-            },
+            }
             TileTypeIs { tile, type_index } => {
                 if !Self::evaluate(&TilePresent { tile: *tile }, context) {
                     return true;
@@ -623,7 +690,7 @@ impl<G: BoardGeometry> ConditionEnum<G> {
 
                 let tile = context.isometry.apply(*tile);
                 <G as BoardGeometry>::get_tile_type(tile) == *type_index
-            },
+            }
             TileFlagPresent { tile, flag } => {
                 if !Self::evaluate(&TilePresent { tile: *tile }, context) {
                     return true;
@@ -634,7 +701,7 @@ impl<G: BoardGeometry> ConditionEnum<G> {
 
                 context.checked_state.register_checked_flag_tile(tile);
                 current_state.flags.contains_flag(tile, *flag)
-            },
+            }
             PiecePresent { tile } => {
                 if !Self::evaluate(&TilePresent { tile: *tile }, context) {
                     return true;
@@ -645,30 +712,36 @@ impl<G: BoardGeometry> ConditionEnum<G> {
 
                 context.checked_state.register_checked_piece_tile(tile);
 
-                let tile = current_state.tile(context.game.rules().board(), tile).unwrap();
+                let tile = current_state
+                    .tile(context.game.rules().board(), tile)
+                    .unwrap();
 
                 tile.get_piece().is_some()
-            },
+            }
             PieceAffectedByMove { tile, past_move } => {
                 if !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*past_move), context)
                     || !Self::evaluate(&TilePresent { tile: *tile }, context)
                     || !Self::evaluate(&PiecePresent { tile: *tile }, context)
-                    || !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*past_move), context) {
+                    || !Self::evaluate(&MovesPlayedGreaterThanOrEqual(*past_move), context)
+                {
                     return true;
                 }
 
                 let current_state = context.game.move_log().current_state();
                 let tile = context.isometry.apply(*tile);
-                let tile = current_state.tile(context.game.rules().board(), tile).unwrap();
+                let tile = current_state
+                    .tile(context.game.rules().board(), tile)
+                    .unwrap();
                 let piece = tile.get_piece().unwrap();
                 let absolute_move = context.game.move_log().len() - 1 - past_move;
 
                 context.checked_state.invalidate();
                 piece.was_affected_by_move(absolute_move)
-            },
+            }
             PieceInitial { tile } => {
                 if !Self::evaluate(&TilePresent { tile: *tile }, context)
-                    || !Self::evaluate(&PiecePresent { tile: *tile }, context) {
+                    || !Self::evaluate(&PiecePresent { tile: *tile }, context)
+                {
                     return true;
                 }
 
@@ -677,14 +750,20 @@ impl<G: BoardGeometry> ConditionEnum<G> {
 
                 context.checked_state.register_checked_piece_tile(tile);
 
-                let tile = current_state.tile(context.game.rules().board(), tile).unwrap();
+                let tile = current_state
+                    .tile(context.game.rules().board(), tile)
+                    .unwrap();
                 let piece = tile.get_piece().unwrap();
 
                 piece.is_initial()
-            },
-            PieceTypeIs { tile, definition_index } => {
+            }
+            PieceTypeIs {
+                tile,
+                definition_index,
+            } => {
                 if !Self::evaluate(&TilePresent { tile: *tile }, context)
-                    || !Self::evaluate(&PiecePresent { tile: *tile }, context) {
+                    || !Self::evaluate(&PiecePresent { tile: *tile }, context)
+                {
                     return true;
                 }
 
@@ -693,14 +772,17 @@ impl<G: BoardGeometry> ConditionEnum<G> {
 
                 context.checked_state.register_checked_piece_tile(tile);
 
-                let tile = current_state.tile(context.game.rules().board(), tile).unwrap();
+                let tile = current_state
+                    .tile(context.game.rules().board(), tile)
+                    .unwrap();
                 let piece = tile.get_piece().unwrap();
 
                 piece.definition == *definition_index
-            },
+            }
             PieceControlledBy { tile, player } => {
                 if !Self::evaluate(&TilePresent { tile: *tile }, context)
-                    || !Self::evaluate(&PiecePresent { tile: *tile }, context) {
+                    || !Self::evaluate(&PiecePresent { tile: *tile }, context)
+                {
                     return true;
                 }
 
@@ -709,14 +791,17 @@ impl<G: BoardGeometry> ConditionEnum<G> {
 
                 context.checked_state.register_checked_piece_tile(tile);
 
-                let tile = current_state.tile(context.game.rules().board(), tile).unwrap();
+                let tile = current_state
+                    .tile(context.game.rules().board(), tile)
+                    .unwrap();
                 let piece = tile.get_piece().unwrap();
 
                 piece.owner == *player
-            },
+            }
             PieceControlledByAlly { tile } => {
                 if !Self::evaluate(&TilePresent { tile: *tile }, context)
-                    || !Self::evaluate(&PiecePresent { tile: *tile }, context) {
+                    || !Self::evaluate(&PiecePresent { tile: *tile }, context)
+                {
                     return true;
                 }
 
@@ -725,14 +810,17 @@ impl<G: BoardGeometry> ConditionEnum<G> {
 
                 context.checked_state.register_checked_piece_tile(tile);
 
-                let tile = current_state.tile(context.game.rules().board(), tile).unwrap();
+                let tile = current_state
+                    .tile(context.game.rules().board(), tile)
+                    .unwrap();
                 let piece = tile.get_piece().unwrap();
 
                 piece.owner == context.current_player
-            },
+            }
             PieceControlledByEnemy { tile } => {
                 if !Self::evaluate(&TilePresent { tile: *tile }, context)
-                    || !Self::evaluate(&PiecePresent { tile: *tile }, context) {
+                    || !Self::evaluate(&PiecePresent { tile: *tile }, context)
+                {
                     return true;
                 }
 
@@ -741,18 +829,24 @@ impl<G: BoardGeometry> ConditionEnum<G> {
 
                 context.checked_state.register_checked_piece_tile(tile);
 
-                let tile = current_state.tile(context.game.rules().board(), tile).unwrap();
+                let tile = current_state
+                    .tile(context.game.rules().board(), tile)
+                    .unwrap();
                 let piece = tile.get_piece().unwrap();
 
                 piece.owner != context.current_player
-            },
+            }
             UnfinishedMoveLegal => {
                 // Unwrap safety: The last move is the unfinished move currently being generated.
                 let mv = context.game.move_log().moves().last().unwrap();
 
                 context.checked_state.invalidate();
-                context.previous_game.rules().victory_conditions().is_move_legal(context.previous_game, mv)
-            },
+                context
+                    .previous_game
+                    .rules()
+                    .victory_conditions()
+                    .is_move_legal(context.previous_game, mv)
+            }
         };
 
         if context.debug {
@@ -799,7 +893,7 @@ impl<G: BoardGeometry> StateUnvalidated<G> {
         self
     }
 
-    pub fn with_successors(mut self, successor_indices: impl IntoIterator<Item=usize>) -> Self {
+    pub fn with_successors(mut self, successor_indices: impl IntoIterator<Item = usize>) -> Self {
         for successor_index in successor_indices {
             self = self.with_successor(successor_index);
         }
@@ -817,7 +911,11 @@ impl<G: BoardGeometry> StateUnvalidated<G> {
         self
     }
 
-    fn check_validity(&self, piece: &PieceDefinitionUnvalidated<G>, definitions: &[PieceDefinitionUnvalidated<G>]) -> Result<(), ()> {
+    fn check_validity(
+        &self,
+        piece: &PieceDefinitionUnvalidated<G>,
+        definitions: &[PieceDefinitionUnvalidated<G>],
+    ) -> Result<(), ()> {
         for successor_index in &*self.successor_indices {
             if *successor_index >= piece.states.len() {
                 return Err(());
@@ -842,10 +940,13 @@ impl<G: BoardGeometry> StateUnvalidated<G> {
         }
     }
 
-    pub fn validate(self, piece: &PieceDefinitionUnvalidated<G>, definitions: &[PieceDefinitionUnvalidated<G>]) -> Result<State<G>, ()> {
-        self.check_validity(piece, definitions).map(move |()| {
-            self.assume_validated()
-        })
+    pub fn validate(
+        self,
+        piece: &PieceDefinitionUnvalidated<G>,
+        definitions: &[PieceDefinitionUnvalidated<G>],
+    ) -> Result<State<G>, ()> {
+        self.check_validity(piece, definitions)
+            .map(move |()| self.assume_validated())
     }
 }
 
@@ -889,7 +990,11 @@ pub enum ActionEnum<G: BoardGeometry> {
 }
 
 impl<G: BoardGeometry> ActionEnum<G> {
-    fn check_validity(&self, piece_definition: &PieceDefinitionUnvalidated<G>, definitions: &[PieceDefinitionUnvalidated<G>]) -> Result<(), ()> {
+    fn check_validity(
+        &self,
+        piece_definition: &PieceDefinitionUnvalidated<G>,
+        definitions: &[PieceDefinitionUnvalidated<G>],
+    ) -> Result<(), ()> {
         // TODO: Check relative position validity based on the source tile type
         use ActionEnum::*;
 
@@ -900,7 +1005,7 @@ impl<G: BoardGeometry> ActionEnum<G> {
                         return Err(());
                     }
                 }
-            },
+            }
             CopyTile { .. } => (),
         }
 
@@ -937,7 +1042,11 @@ pub enum Action<G: BoardGeometry> {
 }
 
 impl<G: BoardGeometry> Action<G> {
-    fn check_validity(&self, piece: &PieceDefinitionUnvalidated<G>, definitions: &[PieceDefinitionUnvalidated<G>]) -> Result<(), ()> {
+    fn check_validity(
+        &self,
+        piece: &PieceDefinitionUnvalidated<G>,
+        definitions: &[PieceDefinitionUnvalidated<G>],
+    ) -> Result<(), ()> {
         use Action::*;
 
         match self {
@@ -945,7 +1054,7 @@ impl<G: BoardGeometry> Action<G> {
                 for inner in actions {
                     inner.check_validity(piece, definitions)?;
                 }
-            },
+            }
             Symmetry { .. } => (),
         }
 

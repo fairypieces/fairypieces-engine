@@ -1,16 +1,16 @@
-use std::marker::PhantomData;
-use std::fmt::Debug;
-use std::sync::Arc;
-use std::ops::Sub;
-use std::num::NonZeroUsize;
-use std::collections::{HashMap, VecDeque, BTreeSet, BTreeMap, HashSet, hash_map::Entry};
-use fxhash::{FxHashMap, FxHashSet};
-use replace_with::replace_with_or_default;
-use hibitset::BitSet;
-use sealed::sealed;
-use crate::victory_conditions::*;
 use crate::delta::*;
+use crate::victory_conditions::*;
 use crate::*;
+use fxhash::{FxHashMap, FxHashSet};
+use hibitset::BitSet;
+use replace_with::replace_with_or_default;
+use sealed::sealed;
+use std::collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
+use std::fmt::Debug;
+use std::marker::PhantomData;
+use std::num::NonZeroUsize;
+use std::ops::Sub;
+use std::sync::Arc;
 
 pub type PlayerIndex = u8;
 
@@ -48,8 +48,17 @@ impl<G: BoardGeometry> MoveLog<G> {
 
     /// Implementation safety: This function invalidates moves from `cache`. See `MoveCache`
     /// for further description.
-    pub(crate) fn undo(&mut self, cache: &mut MoveCache<G>, len: usize) -> im::Vector<ReversibleGameStateDelta<G>> {
-        assert!(len <= self.moves.len(), "Attempted to undo {} moves from a move log with the length {}.", len, self.moves.len());
+    pub(crate) fn undo(
+        &mut self,
+        cache: &mut MoveCache<G>,
+        len: usize,
+    ) -> im::Vector<ReversibleGameStateDelta<G>> {
+        assert!(
+            len <= self.moves.len(),
+            "Attempted to undo {} moves from a move log with the length {}.",
+            len,
+            self.moves.len()
+        );
 
         // Remove `len` moves from the end
         let new_len = self.moves.len() - len;
@@ -119,7 +128,9 @@ impl<G: BoardGeometry> MoveLog<G> {
         &self.current_state
     }
 
-    pub fn moves(&self) -> impl Iterator<Item=&ReversibleGameStateDelta<G>> + DoubleEndedIterator {
+    pub fn moves(
+        &self,
+    ) -> impl Iterator<Item = &ReversibleGameStateDelta<G>> + DoubleEndedIterator {
         self.moves.iter()
     }
 }
@@ -137,18 +148,28 @@ impl<G: BoardGeometry> AvailableMoves<G> {
         Default::default()
     }
 
-    pub fn from(mut moves_from: FxHashMap<<G as BoardGeometryExt>::Tile, FxHashSet<Move<G>>>, move_index: usize) -> Self {
+    pub fn from(
+        mut moves_from: FxHashMap<<G as BoardGeometryExt>::Tile, FxHashSet<Move<G>>>,
+        move_index: usize,
+    ) -> Self {
         // Append the `move_index` to all affected pieces.
         for move_set in moves_from.values_mut() {
             replace_with_or_default(move_set, |move_set| {
-                move_set.into_iter().map(|mut mv| {
-                    mv.push_affecting_move(move_index);
-                    mv
-                }).collect()
+                move_set
+                    .into_iter()
+                    .map(|mut mv| {
+                        mv.push_affecting_move(move_index);
+                        mv
+                    })
+                    .collect()
             });
         }
 
-        let moves: FxHashSet<_> = moves_from.values().flat_map(|move_set| move_set.iter()).cloned().collect();
+        let moves: FxHashSet<_> = moves_from
+            .values()
+            .flat_map(|move_set| move_set.iter())
+            .cloned()
+            .collect();
         let deltas: FxHashSet<_> = moves.iter().map(|mv| mv.delta.clone()).collect();
 
         Self {
@@ -158,33 +179,52 @@ impl<G: BoardGeometry> AvailableMoves<G> {
         }
     }
 
-    pub(crate) fn extend(&mut self, piece_tile: <G as BoardGeometryExt>::Tile, moves: &PieceMoves<G>) {
-        self.deltas.extend(moves.moves.iter().map(|mv| mv.delta.clone()));
-        self.moves_from.entry(piece_tile)
+    pub(crate) fn extend(
+        &mut self,
+        piece_tile: <G as BoardGeometryExt>::Tile,
+        moves: &PieceMoves<G>,
+    ) {
+        self.deltas
+            .extend(moves.moves.iter().map(|mv| mv.delta.clone()));
+        self.moves_from
+            .entry(piece_tile)
             .or_insert_with(|| Default::default())
             .extend(moves.moves.clone());
         self.moves.extend(moves.moves.iter().cloned());
     }
 
     /// Returns an iterator over all valid moves with a piece at the specified tile.
-    pub fn moves_from(&self, tile: <G as BoardGeometryExt>::Tile) -> impl Iterator<Item=&Move<G>> {
-        self.moves_from.get(&tile).into_iter().flat_map(|set| set.into_iter())
+    pub fn moves_from(
+        &self,
+        tile: <G as BoardGeometryExt>::Tile,
+    ) -> impl Iterator<Item = &Move<G>> {
+        self.moves_from
+            .get(&tile)
+            .into_iter()
+            .flat_map(|set| set.into_iter())
     }
 
     /// Returns an iterator over all valid moves.
-    pub fn moves(&self) -> impl Iterator<Item=&Move<G>> {
+    pub fn moves(&self) -> impl Iterator<Item = &Move<G>> {
         self.moves.iter()
     }
 
     /// Returns an iterator over all valid move deltas.
-    pub fn deltas(&self) -> impl Iterator<Item=&ReversibleGameStateDelta<G>> {
+    pub fn deltas(&self) -> impl Iterator<Item = &ReversibleGameStateDelta<G>> {
         self.deltas.iter()
     }
 
     /// Returns `true` if there exists a valid move for the piece at the specified `tile`
     /// with a matching `delta` and `final_tile`.
-    pub fn is_move_available_from(&self, tile: <G as BoardGeometryExt>::Tile, mv: &Move<G>) -> bool {
-        self.moves_from.get(&tile).map(|moves| moves.contains(mv)).unwrap_or(false)
+    pub fn is_move_available_from(
+        &self,
+        tile: <G as BoardGeometryExt>::Tile,
+        mv: &Move<G>,
+    ) -> bool {
+        self.moves_from
+            .get(&tile)
+            .map(|moves| moves.contains(mv))
+            .unwrap_or(false)
     }
 
     /// Returns `true` if there exists a valid move with a matching `delta` and `final_tile`.
@@ -199,7 +239,10 @@ impl<G: BoardGeometry> AvailableMoves<G> {
     }
 }
 
-pub trait GameEvaluation<G: BoardGeometry>: crate::util::Sealed + Clone + std::fmt::Debug + Default {}
+pub trait GameEvaluation<G: BoardGeometry>:
+    crate::util::Sealed + Clone + std::fmt::Debug + Default
+{
+}
 
 #[derive(Clone, Debug, Default)]
 pub struct NotEvaluated;
@@ -243,19 +286,28 @@ impl<G: BoardGeometry, E: GameEvaluation<G>> Game<G, E> {
     }
 
     /// Alter the game's victory conditions
-    pub(crate) fn with_victory_conditions(mut self, victory_conditions: Box<dyn VictoryCondition<G>>) -> Game<G, NotEvaluated> {
+    pub(crate) fn with_victory_conditions(
+        mut self,
+        victory_conditions: Box<dyn VictoryCondition<G>>,
+    ) -> Game<G, NotEvaluated> {
         Arc::make_mut(&mut self.rules).victory_conditions = victory_conditions;
 
         self.replace_evaluation(|_| NotEvaluated)
     }
 
     /// Clone the game with altered victory conditions.
-    pub(crate) fn clone_with_victory_conditions(&self, victory_conditions: Box<dyn VictoryCondition<G>>) -> Game<G, NotEvaluated> {
+    pub(crate) fn clone_with_victory_conditions(
+        &self,
+        victory_conditions: Box<dyn VictoryCondition<G>>,
+    ) -> Game<G, NotEvaluated> {
         self.clone().with_victory_conditions(victory_conditions)
     }
 
     /// Appends a delta without checking whether that delta is available as a legal move.
-    pub(crate) fn append_delta_unchecked(self, delta: ReversibleGameStateDelta<G>) -> Game<G, Evaluated<G>> {
+    pub(crate) fn append_delta_unchecked(
+        self,
+        delta: ReversibleGameStateDelta<G>,
+    ) -> Game<G, Evaluated<G>> {
         let result = self.append_delta_unchecked_without_evaluation(delta);
         result.evaluate()
     }
@@ -268,7 +320,10 @@ impl<G: BoardGeometry, E: GameEvaluation<G>> Game<G, E> {
 
     /// Appends a delta without checking whether that delta is available as a legal move.
     /// Does not evaluate the outcome of the game nor does it generate legal moves.
-    pub(crate) fn append_delta_unchecked_without_evaluation(mut self, delta: ReversibleGameStateDelta<G>) -> Game<G, NotEvaluated> {
+    pub(crate) fn append_delta_unchecked_without_evaluation(
+        mut self,
+        delta: ReversibleGameStateDelta<G>,
+    ) -> Game<G, NotEvaluated> {
         self.move_log.append(delta);
         self.replace_evaluation(|_| NotEvaluated)
     }
@@ -281,8 +336,16 @@ impl<G: BoardGeometry, E: GameEvaluation<G>> Game<G, E> {
     }
 
     /// See [`Game::append_delta_unchecked_without_evaluation`].
-    pub(crate) fn normalize_and_append_delta_unchecked_without_evaluation(self, delta: GameStateDelta<G>, move_type: MoveType) -> Game<G, NotEvaluated> {
-        let normalized = delta.normalize(&self.move_log.current_state, self.rules().board(), move_type);
+    pub(crate) fn normalize_and_append_delta_unchecked_without_evaluation(
+        self,
+        delta: GameStateDelta<G>,
+        move_type: MoveType,
+    ) -> Game<G, NotEvaluated> {
+        let normalized = delta.normalize(
+            &self.move_log.current_state,
+            self.rules().board(),
+            move_type,
+        );
 
         self.append_delta_unchecked_without_evaluation(normalized)
     }
@@ -299,7 +362,10 @@ impl<G: BoardGeometry, E: GameEvaluation<G>> Game<G, E> {
 impl<G: BoardGeometry> Game<G, NotEvaluated> {
     pub fn evaluate(mut self) -> Game<G, Evaluated<G>> {
         let mut available_moves = self.generate_available_moves();
-        let outcome = self.rules.victory_conditions.evaluate(&self, &available_moves);
+        let outcome = self
+            .rules
+            .victory_conditions
+            .evaluate(&self, &available_moves);
 
         if outcome.is_some() {
             available_moves = AvailableMoves::empty();
@@ -331,11 +397,15 @@ impl<G: BoardGeometry> Game<G, NotEvaluated> {
         {
             use rayon::prelude::*;
 
-            moves_from = moves_from.into_par_iter()
+            moves_from = moves_from
+                .into_par_iter()
                 .map(|(tile, mut move_set)| {
-                    move_set = move_set.into_par_iter()
+                    move_set = move_set
+                        .into_par_iter()
                         .filter(|mv| {
-                            self.rules().victory_conditions.is_move_legal(self, mv.delta())
+                            self.rules()
+                                .victory_conditions
+                                .is_move_legal(self, mv.delta())
                         })
                         .map(|mv| {
                             let mut moves = FxHashSet::default();
@@ -367,7 +437,9 @@ impl<G: BoardGeometry> Game<G, NotEvaluated> {
         {
             for move_set in moves_from.values_mut() {
                 move_set.retain(|mv| {
-                    self.rules().victory_conditions.is_move_legal(self, mv.delta())
+                    self.rules()
+                        .victory_conditions
+                        .is_move_legal(self, mv.delta())
                 });
             }
         }
@@ -427,7 +499,9 @@ impl<G: BoardGeometry> Game<G, NotEvaluated> {
             if piece.owner == current_player {
                 if let Some(cached_moves) = self.move_cache.get_cached_moves_from(*tile) {
                     #[cfg(debug_assertions)]
-                    if let Ok(Some(generated_moves)) = self.generate_pseudo_legal_moves_from_tile(*tile) {
+                    if let Ok(Some(generated_moves)) =
+                        self.generate_pseudo_legal_moves_from_tile(*tile)
+                    {
                         if &generated_moves != cached_moves {
                             panic!("Cached move discrepancy #{mv} from tile {tile:?}:\n\tcached:    {cached_moves:?}\n\tgenerated: {generated_moves:?}", mv=self.move_log().len());
                         }
@@ -435,7 +509,9 @@ impl<G: BoardGeometry> Game<G, NotEvaluated> {
 
                     moves_from.insert(*tile, cached_moves.moves.clone());
                     // available_moves.extend(*tile, cached_moves);
-                } else if let Ok(Some(generated_moves)) = self.generate_pseudo_legal_moves_from_tile(*tile) {
+                } else if let Ok(Some(generated_moves)) =
+                    self.generate_pseudo_legal_moves_from_tile(*tile)
+                {
                     moves_from.insert(*tile, generated_moves.moves.clone());
                     // available_moves.extend(*tile, &generated_moves);
                     self.move_cache.cache_moves(*tile, generated_moves);
@@ -450,7 +526,10 @@ impl<G: BoardGeometry> Game<G, NotEvaluated> {
     /// Executes the piece definition's state machine to generate moves from the piece on the given
     /// `tile`.
     /// The state machine is executed using breadth-first search.
-    fn generate_pseudo_legal_moves_from_tile(&self, tile: <G as BoardGeometryExt>::Tile) -> Result<Option<PieceMoves<G>>, ()> {
+    fn generate_pseudo_legal_moves_from_tile(
+        &self,
+        tile: <G as BoardGeometryExt>::Tile,
+    ) -> Result<Option<PieceMoves<G>>, ()> {
         /// An item within the BFS queue.
         #[derive(Clone, Hash, Eq, PartialEq)]
         struct QueueItem<G2: BoardGeometry> {
@@ -469,7 +548,11 @@ impl<G: BoardGeometry> Game<G, NotEvaluated> {
 
         // Get the piece definition to execute the state machine of.
         let (definition, definition_index, debug) = {
-            let tile_ref = self.move_log.current_state.tile(&self.rules.board, tile).ok_or(())?;
+            let tile_ref = self
+                .move_log
+                .current_state
+                .tile(&self.rules.board, tile)
+                .ok_or(())?;
             let piece = tile_ref.get_piece().ok_or(())?.clone();
 
             // If the currently playing player does not own the piece on this tile, it cannot be
@@ -518,7 +601,13 @@ impl<G: BoardGeometry> Game<G, NotEvaluated> {
 
             cache.insert(queue_item.clone());
 
-            let QueueItem { tile, axis_permutation, mut delta, visited_marked_states, state_index } = queue_item;
+            let QueueItem {
+                tile,
+                axis_permutation,
+                mut delta,
+                visited_marked_states,
+                state_index,
+            } = queue_item;
             let state = &definition.states[state_index];
 
             let mut move_type = MoveType {
@@ -532,11 +621,17 @@ impl<G: BoardGeometry> Game<G, NotEvaluated> {
                 let game = self.clone();
                 let partial_delta = delta.clone();
 
-                game.normalize_and_append_delta_unchecked_without_evaluation(partial_delta, move_type.clone())
+                game.normalize_and_append_delta_unchecked_without_evaluation(
+                    partial_delta,
+                    move_type.clone(),
+                )
             };
 
             if debug {
-                println!("State before evaluating condition:\n{game}", game=G::print(&game));
+                println!(
+                    "State before evaluating condition:\n{game}",
+                    game = G::print(&game)
+                );
                 println!("Pieces before evaluating condition:");
 
                 for (tile, piece) in &game.move_log().current_state().pieces {
@@ -545,11 +640,21 @@ impl<G: BoardGeometry> Game<G, NotEvaluated> {
             }
 
             let game_state = game.move_log().current_state();
-            let piece = game_state.tile(&self.rules.board, tile).ok_or(())?.get_piece().ok_or(())?.clone();
-            let isometry = Isometry::from(axis_permutation.clone() * piece.transformation.clone()) * Isometry::translation(tile);
+            let piece = game_state
+                .tile(&self.rules.board, tile)
+                .ok_or(())?
+                .get_piece()
+                .ok_or(())?
+                .clone();
+            let isometry = Isometry::from(axis_permutation.clone() * piece.transformation.clone())
+                * Isometry::translation(tile);
 
             let moves: Vec<(_, _, _)> = match state.action.clone() {
-                Action::Move { condition, actions, move_choices } => {
+                Action::Move {
+                    condition,
+                    actions,
+                    move_choices,
+                } => {
                     // If state conditions are not satisfied, skip the BFS branch.
                     //
                     // TODO: Should `Action::Symmetry` have conditions as well? Consider creating a
@@ -569,7 +674,10 @@ impl<G: BoardGeometry> Game<G, NotEvaluated> {
 
                     for action in actions {
                         match action {
-                            ActionEnum::SetTile { target, piece: piece_definition, } => {
+                            ActionEnum::SetTile {
+                                target,
+                                piece: piece_definition,
+                            } => {
                                 let target = isometry.apply(target);
                                 let new_piece = piece_definition.map(|piece_definition| Piece {
                                     transformation: piece.transformation.clone(),
@@ -579,47 +687,59 @@ impl<G: BoardGeometry> Game<G, NotEvaluated> {
                                 });
 
                                 delta.set(target, new_piece);
-                            },
+                            }
                             ActionEnum::CopyTile { source, target } => {
                                 let source = isometry.apply(source);
                                 let target = isometry.apply(target);
-                                let piece = game_state.tile(&game.rules.board, source).and_then(|tile| tile.get_piece().cloned());
+                                let piece = game_state
+                                    .tile(&game.rules.board, source)
+                                    .and_then(|tile| tile.get_piece().cloned());
 
                                 checked_state.register_checked_piece_tile(source);
                                 delta.set(target, piece);
-                            },
+                            }
                         }
                     }
 
-                    move_choices.into_iter().filter_map(|move_choice| {
-                        let piece = delta.affected_pieces.get(&tile).cloned().unwrap_or_else(||
-                            game_state.tile(&game.rules.board, tile).and_then(|tile| tile.get_piece().cloned()));
-                        let move_choice = isometry.apply(move_choice);
-                        let mut delta = delta.clone();
+                    move_choices
+                        .into_iter()
+                        .filter_map(|move_choice| {
+                            let piece =
+                                delta
+                                    .affected_pieces
+                                    .get(&tile)
+                                    .cloned()
+                                    .unwrap_or_else(|| {
+                                        game_state
+                                            .tile(&game.rules.board, tile)
+                                            .and_then(|tile| tile.get_piece().cloned())
+                                    });
+                            let move_choice = isometry.apply(move_choice);
+                            let mut delta = delta.clone();
 
-                        if tile != move_choice {
-                            if game_state.tile(&game.rules.board, move_choice).is_none() {
-                                // Target tile is missing and its coordinates differ from source tile's.
-                                // This would result in a piece being moved off the board. Since
-                                // that doesn't make much sense, we cancel such moves.
-                                return None;
+                            if tile != move_choice {
+                                if game_state.tile(&game.rules.board, move_choice).is_none() {
+                                    // Target tile is missing and its coordinates differ from source tile's.
+                                    // This would result in a piece being moved off the board. Since
+                                    // that doesn't make much sense, we cancel such moves.
+                                    return None;
+                                }
+
+                                delta.set(tile, None);
+                                checked_state.register_checked_piece_tile(tile);
                             }
 
-                            delta.set(tile, None);
-                            checked_state.register_checked_piece_tile(tile);
-                        }
+                            checked_state.register_checked_piece_tile(move_choice);
+                            delta.set(move_choice, piece);
 
-                        checked_state.register_checked_piece_tile(move_choice);
-                        delta.set(move_choice, piece);
-
-                        Some((move_choice, axis_permutation.clone(), delta))
-                    }).collect()
-                },
-                Action::Symmetry { symmetries } => {
-                    symmetries.into_iter().map(|axis_permutation| {
-                        (tile, axis_permutation, delta.clone())
-                    }).collect()
-                },
+                            Some((move_choice, axis_permutation.clone(), delta))
+                        })
+                        .collect()
+                }
+                Action::Symmetry { symmetries } => symmetries
+                    .into_iter()
+                    .map(|axis_permutation| (tile, axis_permutation, delta.clone()))
+                    .collect(),
             };
 
             // Add visited marked state for successor states.
@@ -662,8 +782,8 @@ impl<G: BoardGeometry> Game<G, NotEvaluated> {
             for mv in &potential_moves {
                 let game = self.clone().append_unchecked_without_evaluation(mv.clone());
 
-                println!("Pseudo-legal move:\n{game}", game=G::print(&game));
-            } 
+                println!("Pseudo-legal move:\n{game}", game = G::print(&game));
+            }
         }
 
         Ok(Some(PieceMoves {
@@ -716,18 +836,25 @@ impl<G: BoardGeometry> Game<G, Evaluated<G>> {
             return Err(());
         }
 
-        self.available_moves().is_delta_available(&delta).then(|| {
-            replace_with_or_default(self, |result| {
-                result.append_delta_unchecked(delta)
-            })
-        }).ok_or(())
+        self.available_moves()
+            .is_delta_available(&delta)
+            .then(|| replace_with_or_default(self, |result| result.append_delta_unchecked(delta)))
+            .ok_or(())
     }
 
     /// If the provided `delta`, normalized, corresponds to a legal move, plays that move.
     /// Otherwise, results in an `Err(_)`.
     #[must_use = "The move may not be available."]
-    pub fn normalize_and_append_delta(&mut self, delta: GameStateDelta<G>, move_type: MoveType) -> Result<(), ()> {
-        let normalized = delta.normalize(&self.move_log.current_state, self.rules().board(), move_type);
+    pub fn normalize_and_append_delta(
+        &mut self,
+        delta: GameStateDelta<G>,
+        move_type: MoveType,
+    ) -> Result<(), ()> {
+        let normalized = delta.normalize(
+            &self.move_log.current_state,
+            self.rules().board(),
+            move_type,
+        );
 
         self.append_delta(normalized)
     }
@@ -742,32 +869,43 @@ impl<G: BoardGeometry> Game<G, Evaluated<G>> {
             return Err(());
         }
 
-        self.available_moves().is_move_available(&mv).then(|| {
-            replace_with_or_default(self, |result| {
-                result.append_unchecked(mv)
-            })
-        }).ok_or(())
+        self.available_moves()
+            .is_move_available(&mv)
+            .then(|| replace_with_or_default(self, |result| result.append_unchecked(mv)))
+            .ok_or(())
     }
 
     /// If the provided `delta` corresponds to a legal move, plays that move.
     /// Otherwise, results in an `Err(_)`.
     #[must_use = "The move may not be available."]
-    pub fn append_delta_without_evaluation(self, delta: ReversibleGameStateDelta<G>) -> Result<Game<G, NotEvaluated>, ()> {
+    pub fn append_delta_without_evaluation(
+        self,
+        delta: ReversibleGameStateDelta<G>,
+    ) -> Result<Game<G, NotEvaluated>, ()> {
         // The game has already been decided.
         if self.evaluation.outcome.is_some() {
             return Err(());
         }
 
-        self.available_moves().is_delta_available(&delta).then(|| {
-            self.append_delta_unchecked_without_evaluation(delta)
-        }).ok_or(())
+        self.available_moves()
+            .is_delta_available(&delta)
+            .then(|| self.append_delta_unchecked_without_evaluation(delta))
+            .ok_or(())
     }
 
     /// If the provided `delta`, normalized, corresponds to a legal move, plays that move.
     /// Otherwise, results in an `Err(_)`.
     #[must_use = "The move may not be available."]
-    pub fn normalize_and_append_delta_without_evaluation(self, delta: GameStateDelta<G>, move_type: MoveType) -> Result<Game<G, NotEvaluated>, ()> {
-        let normalized = delta.normalize(&self.move_log.current_state, self.rules().board(), move_type);
+    pub fn normalize_and_append_delta_without_evaluation(
+        self,
+        delta: GameStateDelta<G>,
+        move_type: MoveType,
+    ) -> Result<Game<G, NotEvaluated>, ()> {
+        let normalized = delta.normalize(
+            &self.move_log.current_state,
+            self.rules().board(),
+            move_type,
+        );
 
         self.append_delta_without_evaluation(normalized)
     }
@@ -782,9 +920,10 @@ impl<G: BoardGeometry> Game<G, Evaluated<G>> {
             return Err(());
         }
 
-        self.available_moves().is_move_available(&mv).then(|| {
-            self.append_unchecked_without_evaluation(mv)
-        }).ok_or(())
+        self.available_moves()
+            .is_move_available(&mv)
+            .then(|| self.append_unchecked_without_evaluation(mv))
+            .ok_or(())
     }
 }
 
@@ -840,12 +979,18 @@ impl<G: BoardGeometry> Flags<G> {
     }
 
     pub fn contains_flag(&self, tile: <G as BoardGeometryExt>::Tile, flag: u32) -> bool {
-        self.map.get(&tile).map(|flags| flags.contains(flag)).unwrap_or(false)
+        self.map
+            .get(&tile)
+            .map(|flags| flags.contains(flag))
+            .unwrap_or(false)
     }
 
     pub fn set_flag(&mut self, tile: <G as BoardGeometryExt>::Tile, flag: u32, value: bool) {
         if value {
-            self.map.entry(tile).or_insert_with(|| BitSet::new()).add(flag);
+            self.map
+                .entry(tile)
+                .or_insert_with(|| BitSet::new())
+                .add(flag);
         } else {
             let flags_empty = if let Some(flags) = self.map.get_mut(&tile) {
                 flags.remove(flag) && *flags == BitSet::new()
@@ -871,23 +1016,27 @@ pub struct GameState<G: BoardGeometry> {
 }
 
 impl<G: BoardGeometry> GameState<G> {
-    pub fn tile(&self, board: &Board<G>, tile: <G as BoardGeometryExt>::Tile) -> Option<TileRef<'_, G>> {
-        board.tiles().contains(tile).then(move || {
-            TileRef {
-                tile,
-                pieces: &self.pieces,
-                flags: &self.flags,
-            }
+    pub fn tile(
+        &self,
+        board: &Board<G>,
+        tile: <G as BoardGeometryExt>::Tile,
+    ) -> Option<TileRef<'_, G>> {
+        board.tiles().contains(tile).then(move || TileRef {
+            tile,
+            pieces: &self.pieces,
+            flags: &self.flags,
         })
     }
 
-    pub fn tile_mut(&mut self, board: &Board<G>, tile: <G as BoardGeometryExt>::Tile) -> Option<TileRefMut<'_, G>> {
-        board.tiles().contains(tile).then(move || {
-            TileRefMut {
-                tile,
-                pieces: &mut self.pieces,
-                flags: &mut self.flags,
-            }
+    pub fn tile_mut(
+        &mut self,
+        board: &Board<G>,
+        tile: <G as BoardGeometryExt>::Tile,
+    ) -> Option<TileRefMut<'_, G>> {
+        board.tiles().contains(tile).then(move || TileRefMut {
+            tile,
+            pieces: &mut self.pieces,
+            flags: &mut self.flags,
         })
     }
 
@@ -907,7 +1056,12 @@ impl<'a, G: BoardGeometry> Sub for &'a GameState<G> {
         let mut delta = GameStateDelta::with_next_player(self.current_player_index());
 
         for (key, lhs_value) in &self.pieces {
-            if rhs.pieces.get(key).map(|rhs_value| rhs_value != lhs_value).unwrap_or(true) {
+            if rhs
+                .pieces
+                .get(key)
+                .map(|rhs_value| rhs_value != lhs_value)
+                .unwrap_or(true)
+            {
                 delta.affected_pieces.insert(*key, Some(lhs_value.clone()));
             }
         }
@@ -918,27 +1072,47 @@ impl<'a, G: BoardGeometry> Sub for &'a GameState<G> {
             }
         }
 
-        let tiles_with_flags: FxHashSet<_> = self.flags.map.keys().chain(rhs.flags.map.keys()).copied().collect();
+        let tiles_with_flags: FxHashSet<_> = self
+            .flags
+            .map
+            .keys()
+            .chain(rhs.flags.map.keys())
+            .copied()
+            .collect();
 
         for tile in tiles_with_flags {
             match (self.flags.get_flags(tile), rhs.flags.get_flags(tile)) {
                 (Some(lhs_flags), Some(rhs_flags)) => {
                     for add_flag in lhs_flags & !rhs_flags {
-                        delta.affected_flags.entry(tile).or_default().insert(add_flag, true);
+                        delta
+                            .affected_flags
+                            .entry(tile)
+                            .or_default()
+                            .insert(add_flag, true);
                     }
 
                     for remove_flag in !lhs_flags & rhs_flags {
-                        delta.affected_flags.entry(tile).or_default().insert(remove_flag, false);
+                        delta
+                            .affected_flags
+                            .entry(tile)
+                            .or_default()
+                            .insert(remove_flag, false);
                     }
-                },
+                }
                 (Some(lhs_flags), None) => {
-                    delta.affected_flags.entry(tile).or_default()
+                    delta
+                        .affected_flags
+                        .entry(tile)
+                        .or_default()
                         .extend(lhs_flags.into_iter().map(|flag| (flag, true)));
-                },
+                }
                 (None, Some(rhs_flags)) => {
-                    delta.affected_flags.entry(tile).or_default()
+                    delta
+                        .affected_flags
+                        .entry(tile)
+                        .or_default()
                         .extend(rhs_flags.into_iter().map(|flag| (flag, false)));
-                },
+                }
                 (None, None) => unreachable!(),
             }
         }

@@ -1,18 +1,18 @@
-use std::num::NonZeroUsize;
-use lazy_static::lazy_static;
 use crate::victory_conditions::*;
 use crate::*;
+use lazy_static::lazy_static;
+use std::num::NonZeroUsize;
 
 // TODO: Consider changing these to enums
 pub static PLAYER_WHITE: PlayerIndex = 0;
 pub static PLAYER_BLACK: PlayerIndex = 1;
 
-pub static PIECE_PAWN: PieceDefinitionIndex   = 0;
-pub static PIECE_ROOK: PieceDefinitionIndex   = 1;
+pub static PIECE_PAWN: PieceDefinitionIndex = 0;
+pub static PIECE_ROOK: PieceDefinitionIndex = 1;
 pub static PIECE_KNIGHT: PieceDefinitionIndex = 2;
 pub static PIECE_BISHOP: PieceDefinitionIndex = 3;
-pub static PIECE_QUEEN: PieceDefinitionIndex  = 4;
-pub static PIECE_KING: PieceDefinitionIndex   = 5;
+pub static PIECE_QUEEN: PieceDefinitionIndex = 4;
+pub static PIECE_KING: PieceDefinitionIndex = 5;
 
 pub static TILE_FLAG_PROMOTION_WHITE: TileFlagIndex = 0;
 pub static TILE_FLAG_PROMOTION_BLACK: TileFlagIndex = 1;
@@ -46,14 +46,20 @@ pub mod pieces {
     pub static BK: Option<(PlayerIndex, PieceDefinitionIndex)> = Some((PLAYER_BLACK, PIECE_KING));
 }
 
-pub fn create_initial_state(pieces: [[Option<(PlayerIndex, PieceDefinitionIndex)>; 8]; 8]) -> GameState<SquareBoardGeometry> {
+pub fn create_initial_state(
+    pieces: [[Option<(PlayerIndex, PieceDefinitionIndex)>; 8]; 8],
+) -> GameState<SquareBoardGeometry> {
     let mut game_state = GameState::<SquareBoardGeometry>::default();
     let player_to_axis_permutation = [
         AxisPermutation::default(),
-        SquareBoardGeometry::get_reflective_symmetries()[0].clone() * SquareBoardGeometry::get_rotations()[2].clone(),
+        SquareBoardGeometry::get_reflective_symmetries()[0].clone()
+            * SquareBoardGeometry::get_rotations()[2].clone(),
     ];
 
-    for (y, tile_flag_promotion) in std::array::IntoIter::new([(0, TILE_FLAG_PROMOTION_BLACK), (7, TILE_FLAG_PROMOTION_WHITE)]) {
+    for (y, tile_flag_promotion) in std::array::IntoIter::new([
+        (0, TILE_FLAG_PROMOTION_BLACK),
+        (7, TILE_FLAG_PROMOTION_WHITE),
+    ]) {
         for x in 0..8 {
             let coords = [x, y].into();
             let mut tile = game_state.tile_mut(&GAME_BOARD, coords).unwrap();
@@ -64,7 +70,8 @@ pub fn create_initial_state(pieces: [[Option<(PlayerIndex, PieceDefinitionIndex)
     for (y, pieces_row) in pieces.iter().rev().enumerate() {
         for (x, piece) in pieces_row.iter().enumerate() {
             if let Some((player, piece)) = piece {
-                let coords: <SquareBoardGeometry as BoardGeometryExt>::Tile = [x as IVecComponent, y as IVecComponent].into();
+                let coords: <SquareBoardGeometry as BoardGeometryExt>::Tile =
+                    [x as IVecComponent, y as IVecComponent].into();
                 let mut tile = game_state.tile_mut(&GAME_BOARD, coords).unwrap();
 
                 tile.set_piece(Some(Piece {
@@ -80,13 +87,22 @@ pub fn create_initial_state(pieces: [[Option<(PlayerIndex, PieceDefinitionIndex)
     game_state
 }
 
-pub fn create_initial_state_symmetrical(white_pieces: &[[Option<PieceDefinitionIndex>; 8]]) -> GameState<SquareBoardGeometry> {
+pub fn create_initial_state_symmetrical(
+    white_pieces: &[[Option<PieceDefinitionIndex>; 8]],
+) -> GameState<SquareBoardGeometry> {
     assert!(white_pieces.len() <= 4);
 
     let mut game_state = GameState::<SquareBoardGeometry>::default();
     let sides: [(PlayerIndex, TileFlagIndex, Isometry<SquareBoardGeometry>); 2] = [
         (PLAYER_WHITE, TILE_FLAG_PROMOTION_BLACK, Isometry::default()),
-        (PLAYER_BLACK, TILE_FLAG_PROMOTION_WHITE, Isometry::from(SquareBoardGeometry::get_reflective_symmetries()[0].clone() * SquareBoardGeometry::get_rotations()[2].clone()) * Isometry::<SquareBoardGeometry>::translation([0, 7].into())),
+        (
+            PLAYER_BLACK,
+            TILE_FLAG_PROMOTION_WHITE,
+            Isometry::from(
+                SquareBoardGeometry::get_reflective_symmetries()[0].clone()
+                    * SquareBoardGeometry::get_rotations()[2].clone(),
+            ) * Isometry::<SquareBoardGeometry>::translation([0, 7].into()),
+        ),
     ];
 
     for (player, tile_flag_promotion, isometry) in &sides {
@@ -95,7 +111,8 @@ pub fn create_initial_state_symmetrical(white_pieces: &[[Option<PieceDefinitionI
             let promote = y == 0;
 
             for (x, piece) in pieces_row.iter().enumerate() {
-                let mut coords: <SquareBoardGeometry as BoardGeometryExt>::Tile = [x as IVecComponent, y as IVecComponent].into();
+                let mut coords: <SquareBoardGeometry as BoardGeometryExt>::Tile =
+                    [x as IVecComponent, y as IVecComponent].into();
                 coords = isometry.apply(coords);
                 let mut tile = game_state.tile_mut(&GAME_BOARD, coords).unwrap();
 
@@ -203,24 +220,24 @@ lazy_static! {
                     condition: ConditionEnum::not(ConditionEnum::any(vec![
                         ConditionEnum::all(vec![
                             ConditionEnum::PieceControlledBy {
-                                
+
                                 tile: [0, 0].into(),
                                 player: PLAYER_WHITE,
                             },
                             ConditionEnum::TileFlagPresent {
-                                
+
                                 tile: [0, 0].into(),
                                 flag: TILE_FLAG_PROMOTION_WHITE,
                             },
                         ]),
                         ConditionEnum::all(vec![
                             ConditionEnum::PieceControlledBy {
-                                
+
                                 tile: [0, 0].into(),
                                 player: PLAYER_BLACK,
                             },
                             ConditionEnum::TileFlagPresent {
-                                
+
                                 tile: [0, 0].into(),
                                 flag: TILE_FLAG_PROMOTION_BLACK,
                             },
@@ -234,24 +251,24 @@ lazy_static! {
                     condition: ConditionEnum::any(vec![
                         ConditionEnum::all(vec![
                             ConditionEnum::PieceControlledBy {
-                                
+
                                 tile: [0, 0].into(),
                                 player: PLAYER_WHITE,
                             },
                             ConditionEnum::TileFlagPresent {
-                                
+
                                 tile: [0, 0].into(),
                                 flag: TILE_FLAG_PROMOTION_WHITE,
                             },
                         ]),
                         ConditionEnum::all(vec![
                             ConditionEnum::PieceControlledBy {
-                                
+
                                 tile: [0, 0].into(),
                                 player: PLAYER_BLACK,
                             },
                             ConditionEnum::TileFlagPresent {
-                                
+
                                 tile: [0, 0].into(),
                                 flag: TILE_FLAG_PROMOTION_BLACK,
                             },
@@ -608,9 +625,7 @@ pub mod tiles {
     use crate::math::{IVec2, IVecComponent};
 
     const fn ivec2(x: IVecComponent, y: IVecComponent) -> IVec2 {
-        unsafe {
-            std::mem::transmute::<[IVecComponent; 2], IVec2>([x, y])
-        }
+        unsafe { std::mem::transmute::<[IVecComponent; 2], IVec2>([x, y]) }
     }
 
     pub const A1: IVec2 = ivec2(0, 0);
