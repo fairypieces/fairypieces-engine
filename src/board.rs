@@ -168,14 +168,14 @@ impl BoardGeometry for TriangularBoardGeometry {
             ];
         }
 
-        &*REFLECTIVE_SYMMETRIES
+        &REFLECTIVE_SYMMETRIES
     }
 
     fn get_rotations() -> SmallVec<[AxisPermutation<Self>; 3]> {
         AxisPermutation::cycle_axes().collect()
     }
 
-    fn print_state(game_rules: &GameRules<Self>, game_state: &GameState<Self>) -> String {
+    fn print_state(_game_rules: &GameRules<Self>, _game_state: &GameState<Self>) -> String {
         //
         // ⣿ Lbl ⣉⣿⣿⣿⣉ Lbl ⣿ Lbl ⣉⣿⣿⣿⣉ Lbl ⣿
         // ⣿ ⣀⣤⠶⠛⠉ ⣿ ⠉⠛⠶⣤⣀ ⣿ ⣀⣤⠶⠛⠉ ⣿ ⠉⠛⠶⣤⣀ ⣿
@@ -229,7 +229,7 @@ impl BoardGeometry for SquareBoardGeometry {
         true
     }
 
-    fn get_tile_type(tile: IVec<Self::CoordinateDimensions>) -> usize {
+    fn get_tile_type(_tile: IVec<Self::CoordinateDimensions>) -> usize {
         0
     }
 
@@ -258,7 +258,7 @@ impl BoardGeometry for SquareBoardGeometry {
             ];
         }
 
-        &*REFLECTIVE_SYMMETRIES
+        &REFLECTIVE_SYMMETRIES
     }
 
     fn get_rotations() -> SmallVec<[AxisPermutation<Self>; 3]> {
@@ -362,10 +362,8 @@ impl BoardGeometry for SquareBoardGeometry {
             game_state: &GameState<SquareBoardGeometry>,
         ) -> [[char; 3]; 3] {
             let n: SmallVec<[SmallVec<[bool; 3]>; 3]> = (-1..=1)
-                .into_iter()
                 .map(|y| {
                     (-1..=1)
-                        .into_iter()
                         .map(|x| {
                             let offset = IVec2::from([x, y]);
                             let absolute = tile + offset;
@@ -376,6 +374,7 @@ impl BoardGeometry for SquareBoardGeometry {
                 .collect();
 
             fn get_corner(offset: [usize; 2], n: &SmallVec<[SmallVec<[bool; 3]>; 3]>) -> char {
+                #[allow(clippy::identity_op)]
                 get_border(
                     n[0 + offset[1]][1 + offset[0]] || n[1 + offset[1]][1 + offset[0]],
                     n[0 + offset[1]][0 + offset[0]] || n[0 + offset[1]][1 + offset[0]],
@@ -408,7 +407,7 @@ impl BoardGeometry for SquareBoardGeometry {
             [[0xFF, 0xFF, 0xFF], [0x00, 0x00, 0x00]],
         ];
 
-        for y in (min[1]..=max[1]).into_iter().rev() {
+        for y in (min[1]..=max[1]).rev() {
             let mut row = [String::new(), String::new(), String::new()];
 
             for x in min[0]..=max[0] {
@@ -476,7 +475,7 @@ impl BoardGeometry for HexagonalBoardGeometry {
         sum == 0
     }
 
-    fn get_tile_type(tile: IVec<Self::CoordinateDimensions>) -> usize {
+    fn get_tile_type(_tile: IVec<Self::CoordinateDimensions>) -> usize {
         0
     }
 
@@ -507,7 +506,7 @@ impl BoardGeometry for HexagonalBoardGeometry {
             ];
         }
 
-        &*REFLECTIVE_SYMMETRIES
+        &REFLECTIVE_SYMMETRIES
     }
 
     fn get_rotations() -> SmallVec<[AxisPermutation<Self>; 3]> {
@@ -524,7 +523,7 @@ impl BoardGeometry for HexagonalBoardGeometry {
         ]
     }
 
-    fn print_state(game_rules: &GameRules<Self>, game_state: &GameState<Self>) -> String {
+    fn print_state(_game_rules: &GameRules<Self>, _game_state: &GameState<Self>) -> String {
         //
         // ⠉⠛⠶⣤⠶⠛⠉⠛⠶⣤⠶⠛⠉⠛⠶⣤⠶⠛⠉⠛⠶⣤⠶⠛⠉
         // bl ⣿ Lbl ⣿ Lbl ⣿ Lbl ⣿ Lb
@@ -660,7 +659,7 @@ impl<G: BoardGeometry> Neg for AxisPermutation<G> {
 
     fn neg(mut self) -> Self::Output {
         for &mut (ref mut sign, _) in &mut self.signed_axes {
-            *sign = *sign ^ true;
+            *sign ^= true;
         }
 
         self

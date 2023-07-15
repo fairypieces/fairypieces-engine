@@ -118,7 +118,7 @@ where
                 StalemateEvaluation::Draw => {
                     let mut game = game.clone_with_victory_conditions(Box::new(self.inner.clone()));
 
-                    if game.move_log().len() > 0 {
+                    if !game.move_log().is_empty() {
                         // If a move was played, replay that move with its `next_player` set to the
                         // current `next_player`.
                         let mut last_mv = game.move_log.undo(&mut game.move_cache, 1).remove(0);
@@ -287,19 +287,16 @@ impl<G: BoardGeometry> VictoryCondition<G> for RoyalVictoryCondition {
         let rules = game.rules();
         // Initialize piece counts with all piece definitions and counts of 0
         let piece_counts_per_player = (0..game.rules().piece_set().definitions().len())
-            .into_iter()
             .flat_map(|definition_index| {
-                (0..game.rules().players().get())
-                    .into_iter()
-                    .map(move |player_index| {
+                (0..game.rules().players().get()).map(move |player_index| {
+                    (
                         (
-                            (
-                                player_index as PlayerIndex,
-                                definition_index as PieceDefinitionIndex,
-                            ),
-                            0,
-                        )
-                    })
+                            player_index as PlayerIndex,
+                            definition_index as PieceDefinitionIndex,
+                        ),
+                        0,
+                    )
+                })
             })
             .collect::<FxHashMap<(PlayerIndex, PieceDefinitionIndex), usize>>();
         let piece_counts_per_player = state
@@ -316,7 +313,6 @@ impl<G: BoardGeometry> VictoryCondition<G> for RoyalVictoryCondition {
             Quantifier::Any => false,
         };
         let initial_player_evaluations = (0..rules.players().get())
-            .into_iter()
             .map(|player| (player as PlayerIndex, initial_player_evaluation))
             .collect::<FxHashMap<PlayerIndex, bool>>();
 

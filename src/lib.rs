@@ -1,13 +1,8 @@
-// #![feature(min_const_generics)]
-// #![feature(const_generics)]
-// #![feature(const_evaluatable_checked)]
-// #![feature(const_fn)]
+// #![feature(adt_const_params)]
+// #![feature(generic_const_exprs)]
 // #![feature(inline_const)]
-#![feature(btree_retain)]
 #![feature(trait_alias)]
-#![feature(format_args_capture)]
 #![feature(associated_type_bounds)]
-#![feature(const_fn_transmute)]
 
 use board::*;
 use game::*;
@@ -25,7 +20,6 @@ pub mod victory_conditions;
 
 #[cfg(test)]
 mod tests {
-    use std::num::NonZeroUsize;
 
     #[test]
     fn geometries() {

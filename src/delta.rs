@@ -127,7 +127,7 @@ impl<G: BoardGeometry> GameStateDelta<G> {
         self.next_player = next_player;
     }
 
-    pub fn set(&mut self, tile: <G as BoardGeometryExt>::Tile, mut piece: Option<Piece<G>>) {
+    pub fn set(&mut self, tile: <G as BoardGeometryExt>::Tile, piece: Option<Piece<G>>) {
         self.affected_pieces.insert(tile, piece);
     }
 
@@ -169,7 +169,7 @@ impl<G: BoardGeometry> GameStateDelta<G> {
     ///
     /// In other words, returns `true` if `rhs` is `lhs` and something extra.
     pub fn is_part_of(&self, rhs: &GameStateDelta<G>) -> bool {
-        true && self.next_player == rhs.next_player
+        self.next_player == rhs.next_player
             && self.affected_pieces.len() <= rhs.affected_pieces.len()
             && self.affected_flags.len() <= rhs.affected_flags.len()
             && self

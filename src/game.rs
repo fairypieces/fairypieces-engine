@@ -4,10 +4,10 @@ use crate::*;
 use fxhash::{FxHashMap, FxHashSet};
 use hibitset::BitSet;
 use replace_with::replace_with_or_default;
-use sealed::sealed;
-use std::collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
+
+use std::collections::{HashSet, VecDeque};
 use std::fmt::Debug;
-use std::marker::PhantomData;
+
 use std::num::NonZeroUsize;
 use std::ops::Sub;
 use std::sync::Arc;
@@ -44,6 +44,10 @@ impl<G: BoardGeometry> MoveLog<G> {
 
     pub fn len(&self) -> usize {
         self.moves.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     /// Implementation safety: This function invalidates moves from `cache`. See `MoveCache`
@@ -188,7 +192,7 @@ impl<G: BoardGeometry> AvailableMoves<G> {
             .extend(moves.moves.iter().map(|mv| mv.delta.clone()));
         self.moves_from
             .entry(piece_tile)
-            .or_insert_with(|| Default::default())
+            .or_insert_with(Default::default)
             .extend(moves.moves.clone());
         self.moves.extend(moves.moves.iter().cloned());
     }
@@ -201,7 +205,7 @@ impl<G: BoardGeometry> AvailableMoves<G> {
         self.moves_from
             .get(&tile)
             .into_iter()
-            .flat_map(|set| set.into_iter())
+            .flat_map(|set| set.iter())
     }
 
     /// Returns an iterator over all valid moves.
@@ -313,7 +317,7 @@ impl<G: BoardGeometry, E: GameEvaluation<G>> Game<G, E> {
     }
 
     /// Appends a move without checking whether that move is legal (is an element of [`Game::available_moves`]).
-    pub(crate) fn append_unchecked(mut self, mv: Move<G>) -> Game<G, Evaluated<G>> {
+    pub(crate) fn append_unchecked(self, mv: Move<G>) -> Game<G, Evaluated<G>> {
         let result = self.append_unchecked_without_evaluation(mv);
         result.evaluate()
     }
@@ -412,25 +416,19 @@ impl<G: BoardGeometry> Game<G, NotEvaluated> {
                             moves.insert(mv);
                             moves
                         })
-                        .reduce(
-                            || Default::default(),
-                            |mut lhs, rhs| {
-                                lhs.extend(rhs);
-                                lhs
-                            },
-                        );
+                        .reduce(Default::default, |mut lhs, rhs| {
+                            lhs.extend(rhs);
+                            lhs
+                        });
 
                     let mut moves_from = FxHashMap::default();
                     moves_from.insert(tile, move_set);
                     moves_from
                 })
-                .reduce(
-                    || FxHashMap::default(),
-                    |mut lhs, rhs| {
-                        lhs.extend(rhs);
-                        lhs
-                    },
-                );
+                .reduce(FxHashMap::default, |mut lhs, rhs| {
+                    lhs.extend(rhs);
+                    lhs
+                });
         }
 
         #[cfg(not(feature = "concurrency"))]
@@ -544,7 +542,7 @@ impl<G: BoardGeometry> Game<G, NotEvaluated> {
         // TODO: Generalize: The next player should be determined according to the customizable
         // rules of the game.
         let next_player = (current_player + 1) % self.rules.players.get() as PlayerIndex;
-        let move_index = self.move_log().len();
+        let _move_index = self.move_log().len();
 
         // Get the piece definition to execute the state machine of.
         let (definition, definition_index, debug) = {
@@ -681,7 +679,7 @@ impl<G: BoardGeometry> Game<G, NotEvaluated> {
                                 let target = isometry.apply(target);
                                 let new_piece = piece_definition.map(|piece_definition| Piece {
                                     transformation: piece.transformation.clone(),
-                                    definition: piece_definition as u16,
+                                    definition: piece_definition,
                                     owner: piece.owner,
                                     affecting_moves: Default::default(),
                                 });
@@ -718,6 +716,7 @@ impl<G: BoardGeometry> Game<G, NotEvaluated> {
                             let mut delta = delta.clone();
 
                             if tile != move_choice {
+                                #[allow(clippy::question_mark)]
                                 if game_state.tile(&game.rules.board, move_choice).is_none() {
                                     // Target tile is missing and its coordinates differ from source tile's.
                                     // This would result in a piece being moved off the board. Since
@@ -987,10 +986,7 @@ impl<G: BoardGeometry> Flags<G> {
 
     pub fn set_flag(&mut self, tile: <G as BoardGeometryExt>::Tile, flag: u32, value: bool) {
         if value {
-            self.map
-                .entry(tile)
-                .or_insert_with(|| BitSet::new())
-                .add(flag);
+            self.map.entry(tile).or_insert_with(BitSet::new).add(flag);
         } else {
             let flags_empty = if let Some(flags) = self.map.get_mut(&tile) {
                 flags.remove(flag) && *flags == BitSet::new()
@@ -1021,7 +1017,7 @@ impl<G: BoardGeometry> GameState<G> {
         board: &Board<G>,
         tile: <G as BoardGeometryExt>::Tile,
     ) -> Option<TileRef<'_, G>> {
-        board.tiles().contains(tile).then(move || TileRef {
+        board.tiles().contains(tile).then_some(TileRef {
             tile,
             pieces: &self.pieces,
             flags: &self.flags,
@@ -1033,7 +1029,7 @@ impl<G: BoardGeometry> GameState<G> {
         board: &Board<G>,
         tile: <G as BoardGeometryExt>::Tile,
     ) -> Option<TileRefMut<'_, G>> {
-        board.tiles().contains(tile).then(move || TileRefMut {
+        board.tiles().contains(tile).then_some(TileRefMut {
             tile,
             pieces: &mut self.pieces,
             flags: &mut self.flags,
@@ -1066,7 +1062,7 @@ impl<'a, G: BoardGeometry> Sub for &'a GameState<G> {
             }
         }
 
-        for (key, _rhs_value) in &rhs.pieces {
+        for key in rhs.pieces.keys() {
             if self.pieces.get(key).is_none() {
                 delta.affected_pieces.insert(*key, None);
             }

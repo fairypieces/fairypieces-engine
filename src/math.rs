@@ -66,7 +66,7 @@ impl<D: IVecLength> Add<IVecComponent> for IVec<D> {
 impl<D: IVecLength> AddAssign<Self> for IVec<D> {
     fn add_assign(&mut self, rhs: Self) {
         self.iter_mut()
-            .zip(rhs.into_iter())
+            .zip(rhs)
             .for_each(|(c, rhs_c)| c.add_assign(rhs_c));
     }
 }
@@ -98,7 +98,7 @@ impl<D: IVecLength> Sub<IVecComponent> for IVec<D> {
 impl<D: IVecLength> SubAssign<Self> for IVec<D> {
     fn sub_assign(&mut self, rhs: Self) {
         self.iter_mut()
-            .zip(rhs.into_iter())
+            .zip(rhs)
             .for_each(|(c, rhs_c)| c.sub_assign(rhs_c));
     }
 }
@@ -130,7 +130,7 @@ impl<D: IVecLength> Mul<IVecComponent> for IVec<D> {
 impl<D: IVecLength> MulAssign<Self> for IVec<D> {
     fn mul_assign(&mut self, rhs: Self) {
         self.iter_mut()
-            .zip(rhs.into_iter())
+            .zip(rhs)
             .for_each(|(c, rhs_c)| c.mul_assign(rhs_c));
     }
 }
@@ -162,7 +162,7 @@ impl<D: IVecLength> Div<IVecComponent> for IVec<D> {
 impl<D: IVecLength> DivAssign<Self> for IVec<D> {
     fn div_assign(&mut self, rhs: Self) {
         self.iter_mut()
-            .zip(rhs.into_iter())
+            .zip(rhs)
             .for_each(|(c, rhs_c)| c.div_assign(rhs_c));
     }
 }
@@ -194,7 +194,7 @@ impl<D: IVecLength> Rem<IVecComponent> for IVec<D> {
 impl<D: IVecLength> RemAssign<Self> for IVec<D> {
     fn rem_assign(&mut self, rhs: Self) {
         self.iter_mut()
-            .zip(rhs.into_iter())
+            .zip(rhs)
             .for_each(|(c, rhs_c)| c.rem_assign(rhs_c));
     }
 }

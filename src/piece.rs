@@ -1,10 +1,10 @@
 use crate::board::*;
 use crate::delta::{Move, ReversibleGameStateDelta};
-use crate::game::{GameEvaluation, GameState, NotEvaluated, PlayerIndex};
-use crate::math::*;
+use crate::game::{NotEvaluated, PlayerIndex};
 use crate::{Game, MoveLog};
 use fxhash::{FxHashMap, FxHashSet};
 use std::collections::BTreeSet;
+use std::ops::Not;
 
 // TODO: Improve error types for validation.
 
@@ -577,6 +577,14 @@ pub(crate) struct ConditionEvaluationContext<'a, G: BoardGeometry> {
     pub(crate) debug: bool,
 }
 
+impl<G: BoardGeometry> Not for ConditionEnum<G> {
+    type Output = Self;
+
+    fn not(self) -> Self::Output {
+        ConditionEnum::Not(Box::new(self))
+    }
+}
+
 impl<G: BoardGeometry> ConditionEnum<G> {
     pub fn always() -> Self {
         ConditionEnum::All(Default::default())
@@ -584,10 +592,6 @@ impl<G: BoardGeometry> ConditionEnum<G> {
 
     pub fn never() -> Self {
         ConditionEnum::Any(Default::default())
-    }
-
-    pub fn not(inner: Self) -> Self {
-        ConditionEnum::Not(Box::new(inner))
     }
 
     pub fn any(conditions: impl IntoIterator<Item = ConditionEnum<G>>) -> Self {
@@ -610,7 +614,7 @@ impl<G: BoardGeometry> ConditionEnum<G> {
                 // Subtract 1 from the move log length, because the current state
                 // of the board contains a temporary move (which was not played by any of the
                 // players) used for computing the resulting move.
-                context.game.move_log.moves.len() >= *moves + 1
+                context.game.move_log.moves.len() > *moves
             }
             MoveGeneratedByPiece {
                 past_move,
@@ -992,7 +996,7 @@ pub enum ActionEnum<G: BoardGeometry> {
 impl<G: BoardGeometry> ActionEnum<G> {
     fn check_validity(
         &self,
-        piece_definition: &PieceDefinitionUnvalidated<G>,
+        _piece_definition: &PieceDefinitionUnvalidated<G>,
         definitions: &[PieceDefinitionUnvalidated<G>],
     ) -> Result<(), ()> {
         // TODO: Check relative position validity based on the source tile type
