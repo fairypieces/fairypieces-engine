@@ -84,13 +84,24 @@ impl<G: BoardGeometry> MoveLog<G> {
     }
 
     pub fn append(&mut self, delta: ReversibleGameStateDelta<G>) {
-        let previous_game_state = self.current_state.clone();
+        // Ensure all appended moves are reversible. Ensured using induction.
+        let previous_game_state = if cfg!(debug_assertions) {
+            Some(self.current_state.clone())
+        } else {
+            None
+        };
 
         self.moves.push_back(delta.clone());
-        replace_with_or_default(&mut self.current_state, |current_state| current_state.apply(delta.forward().clone()));
+        replace_with_or_default(&mut self.current_state, |current_state| {
+            current_state.apply(delta.forward().clone())
+        });
 
-        // Ensure all appended moves are reversible. Ensured using induction.
-        debug_assert_eq!(previous_game_state, self.current_state.clone().apply(delta.into_backward()));
+        if let Some(previous_game_state) = previous_game_state {
+            debug_assert_eq!(
+                previous_game_state,
+                self.current_state.clone().apply(delta.into_backward())
+            );
+        }
 
         // Disabled condition that checks all recorded moves -- wasteful.
         // debug_assert!(self.initial_state == self.moves.iter().rev().fold(self.current_state.clone(), |state, mv| state.apply(mv.backward.clone())));
